@@ -44,7 +44,7 @@ make -j
 Run the executable with an optional parameter to specify the matrix dimension:
 
 ```bash
-./in-place [dimension]
+./bench-matmul [dimension]
 ```
 
 Where:
@@ -52,7 +52,7 @@ Where:
 
 Example:
 ```bash
-./in-place 1024  # Run with 1024x1024 matrices
+./bench-matmul 1024  # Run with 1024x1024 matrices
 ```
 
 ## Optimization Techniques
