@@ -366,7 +366,7 @@ void multiplyMatricesAVX2NoTranspose(float** matrixA, float** matrixB, float** r
                                 matrixB[k][j], matrixB[k][j+1], 
                                 matrixB[k][j+2], matrixB[k][j+3],
                                 matrixB[k][j+4], matrixB[k][j+5], 
-                                matrixB[k][j+6], matrixB[k][j+7]
+                                matrixB[k][j+6], matrixB[k][j+6]
                             );
                             
                             // Use FMA to accumulate results in registers
