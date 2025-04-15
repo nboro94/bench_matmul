@@ -55,6 +55,22 @@ Example:
 ./bench-matmul 1024  # Run with 1024x1024 matrices
 ```
 
+### Automated Benchmarking
+
+You can run benchmarks for multiple matrix sizes automatically using the provided Python script:
+
+```bash
+python3 run_benchmarks.py
+```
+
+This script runs the benchmark with matrix sizes 64, 128, 512, 1024, 2048, 4096, and 8192, saving the output of each run to a separate log file in the `logs` directory.
+
+You can specify a custom path to the executable:
+
+```bash
+python3 run_benchmarks.py --executable /path/to/bench-matmul
+```
+
 ## Optimization Techniques
 
 ### Cache Blocking/Tiling
