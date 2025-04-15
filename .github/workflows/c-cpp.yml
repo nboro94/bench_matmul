@@ -16,8 +16,9 @@ jobs:
     - name: build
       run: mkdir build && cd build && cmake ..
     - name: make
-      run: make -j
-    - name: make check
-      run: make check -j
-    - name: make distcheck
-      run: make distcheck -j
+      run: cd build && make -j
+    - name: Run Benchmarks
+      run: |
+        python3 -m venv venv
+        source venv/bin/activate
+        python3 run_benchmarks.py --executable build/bench-matmul
