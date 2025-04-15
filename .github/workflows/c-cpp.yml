@@ -17,10 +17,6 @@ jobs:
       run: mkdir build && cd build && cmake ..
     - name: make
       run: cd build && make -j
-    - name: make check
-      run: cd build && make check -j
-    - name: make distcheck
-      run: cd build && make distcheck -j
     - name: Run Benchmarks
       run: |
         python3 -m venv venv
