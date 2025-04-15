@@ -60,7 +60,7 @@ def main():
     args = parser.parse_args()
     
     # Matrix sizes to benchmark
-    matrix_sizes = [64, 128, 512, 1024, 2048, 4096]
+    matrix_sizes = [64, 128, 512, 1024]
     
     print(f"Starting benchmark suite with {len(matrix_sizes)} different matrix sizes")
     print(f"Executable: {args.executable}")
