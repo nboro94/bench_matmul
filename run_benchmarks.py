@@ -88,6 +88,8 @@ def main():
     for size in matrix_sizes:
         if run_benchmark(args.executable, size, log_dir):
             successful_runs += 1
+        else:
+            assert(0:)
         print("-" * 50)
     
     total_time = time.time() - start_time
