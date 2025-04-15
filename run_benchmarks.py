@@ -6,12 +6,25 @@ import time
 import argparse
 from datetime import datetime
 
-def run_benchmark(executable_path, matrix_size):
+def get_available_log_dir():
+    """Find an available log directory."""
+    base_dir = "logs"
+    
+    # If logs doesn't exist, use it
+    if not os.path.exists(base_dir):
+        return base_dir
+    
+    # If logs exists, try logs_1, logs_2, etc.
+    counter = 1
+    while True:
+        new_dir = f"{base_dir}_{counter}"
+        if not os.path.exists(new_dir):
+            return new_dir
+        counter += 1
+
+def run_benchmark(executable_path, matrix_size, log_dir):
     """Run the matrix multiplication benchmark with the specified size."""
     print(f"Running benchmark with matrix size {matrix_size}x{matrix_size}...")
-    
-    log_dir = "logs"
-    os.makedirs(log_dir, exist_ok=True)
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = f"{log_dir}/matmul_bench_{matrix_size}_{timestamp}.log"
@@ -62,14 +75,18 @@ def main():
     # Matrix sizes to benchmark
     matrix_sizes = [64, 128, 512, 1024]
     
+    # Get a single log directory for this run
+    log_dir = get_available_log_dir()
+    os.makedirs(log_dir, exist_ok=True)
     print(f"Starting benchmark suite with {len(matrix_sizes)} different matrix sizes")
     print(f"Executable: {args.executable}")
+    print(f"Logs will be saved to: {log_dir}")
     
     start_time = time.time()
     successful_runs = 0
     
     for size in matrix_sizes:
-        if run_benchmark(args.executable, size):
+        if run_benchmark(args.executable, size, log_dir):
             successful_runs += 1
         print("-" * 50)
     
