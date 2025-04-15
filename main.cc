@@ -36,7 +36,7 @@ void determineOptimalThreadCount() {
     unsigned int hwThreads = std::thread::hardware_concurrency();
     
     // Ensure at least 2 threads and no more than reasonable for the problem size
-    NUM_THREADS = std::max(1u, std::min(hwThreads, 16u));
+    NUM_THREADS = std::max(1u, std::min(hwThreads, 48u));
     
     log("Hardware detection: " + std::to_string(hwThreads) + " logical CPU cores available");
     if (NUM_THREADS != hwThreads) {
@@ -100,15 +100,15 @@ int matrixAllocations = 0;
 int matrixDeallocations = 0;
 
 // Function to allocate a matrix on the heap using contiguous memory
-int** allocateMatrix() {
+float** allocateMatrix() {
     try {
         log("Allocating matrix of size " + std::to_string(N) + "x" + std::to_string(N));
         
         // Allocate contiguous memory for the entire matrix data
-        int* data = new int[N * N];
+        float* data = new float[N * N];
         
         // Allocate array of pointers to rows
-        int** matrix = new int*[N];
+        float** matrix = new float*[N];
         
         // Set up row pointers to the appropriate positions in the data block
         for (int i = 0; i < N; i++) {
@@ -127,7 +127,7 @@ int** allocateMatrix() {
 }
 
 // Function to deallocate a matrix from heap (for contiguous storage)
-void deallocateMatrix(int** matrix) {
+void deallocateMatrix(float** matrix) {
     if (matrix == nullptr) {
         log("Warning: Attempted to deallocate nullptr matrix");
         return; // Guard against null pointer
@@ -157,7 +157,7 @@ void checkMemoryLeaks() {
 }
 
 // Function to initialize a matrix with random values
-void initializeRandomMatrix(int** matrix, std::mt19937& gen, std::uniform_int_distribution<int>& dist) {
+void initializeRandomMatrix(float** matrix, std::mt19937& gen, std::uniform_real_distribution<float>& dist) {
     for (int i = 0; i < N; i++) {
         for (int j = 0; j < N; j++) {
             matrix[i][j] = dist(gen);
@@ -166,10 +166,10 @@ void initializeRandomMatrix(int** matrix, std::mt19937& gen, std::uniform_int_di
 }
 
 // Optimized function to initialize a matrix with random values
-void initializeRandomMatrixFast(int** matrix, std::mt19937& gen, std::uniform_int_distribution<int>& dist) {
+void initializeRandomMatrixFast(float** matrix, std::mt19937& gen, std::uniform_real_distribution<float>& dist) {
     // Access in contiguous memory order for better cache usage
     // Since we're using a 1D array under the hood, we can access it directly
-    int* data = matrix[0];  // Points to the start of the contiguous block
+    float* data = matrix[0];  // Points to the start of the contiguous block
     
     // Single loop is more cache-friendly than nested loops
     for (int i = 0; i < N * N; i++) {
@@ -178,7 +178,7 @@ void initializeRandomMatrixFast(int** matrix, std::mt19937& gen, std::uniform_in
 }
 
 // Function to print a matrix
-void printMatrix(int** matrix, const std::string& name) {
+void printMatrix(float** matrix, const std::string& name) {
     std::cout << name << ":\n";
     for (int i = 0; i < N; i++) {
         for (int j = 0; j < N; j++) {
@@ -190,9 +190,9 @@ void printMatrix(int** matrix, const std::string& name) {
 }
 
 // Function to perform standard matrix multiplication
-void multiplyMatrices(int** matrixA, int** matrixB, int** result) {
+void multiplyMatrices(float** matrixA, float** matrixB, float** result) {
     // Initialize result matrix to zeros - use memset for efficiency
-    memset(result[0], 0, N * N * sizeof(int));
+    memset(result[0], 0, N * N * sizeof(float));
     
     for (int row = 0; row < N; row++) {
         for (int col = 0; col < N; col++) {
@@ -204,9 +204,9 @@ void multiplyMatrices(int** matrixA, int** matrixB, int** result) {
 }
 
 // Function to perform optimized matrix multiplication using cache blocking/tiling
-void multiplyMatricesOptimized(int** matrixA, int** matrixB, int** result) {
+void multiplyMatricesOptimized(float** matrixA, float** matrixB, float** result) {
     // Initialize result matrix to zeros using memset
-    memset(result[0], 0, N * N * sizeof(int));
+    memset(result[0], 0, N * N * sizeof(float));
     
     // Process all blocks
     for (int bi = 0; bi < N; bi += BLOCK_SIZE) {
@@ -217,7 +217,7 @@ void multiplyMatricesOptimized(int** matrixA, int** matrixB, int** result) {
                 for (int i = bi; i < std::min(bi + BLOCK_SIZE, N); i++) {
                     for (int k = bk; k < std::min(bk + BLOCK_SIZE, N); k++) {
                         // Load matrixA[i][k] into register once per inner loop
-                        int aik = matrixA[i][k];
+                        float aik = matrixA[i][k];
                         for (int j = bj; j < std::min(bj + BLOCK_SIZE, N); j++) {
                             result[i][j] += aik * matrixB[k][j];
                         }
@@ -229,9 +229,9 @@ void multiplyMatricesOptimized(int** matrixA, int** matrixB, int** result) {
 }
 
 // Function to perform matrix multiplication with transposition and tiling
-void multiplyMatricesTransposed(int** matrixA, int** matrixB, int** result) {
+void multiplyMatricesTransposed(float** matrixA, float** matrixB, float** result) {
     // First create a transposed copy of matrix B for better cache locality
-    int** transposedB = allocateMatrix();
+    float** transposedB = allocateMatrix();
     
     // Transpose B in a cache-friendly way (using tiling)
     for (int bi = 0; bi < N; bi += BLOCK_SIZE) {
@@ -245,7 +245,7 @@ void multiplyMatricesTransposed(int** matrixA, int** matrixB, int** result) {
     }
     
     // Initialize result matrix to zeros using memset
-    memset(result[0], 0, N * N * sizeof(int));
+    memset(result[0], 0, N * N * sizeof(float));
     
     // Perform tiled multiplication with the transposed B matrix
     for (int bi = 0; bi < N; bi += BLOCK_SIZE) {
@@ -254,7 +254,7 @@ void multiplyMatricesTransposed(int** matrixA, int** matrixB, int** result) {
                 // Process current block
                 for (int i = bi; i < std::min(bi + BLOCK_SIZE, N); i++) {
                     for (int j = bj; j < std::min(bj + BLOCK_SIZE, N); j++) {
-                        int sum = 0;
+                        float sum = 0;
                         // Now we can access both matrices in row-major order
                         for (int k = bk; k < std::min(bk + BLOCK_SIZE, N); k++) {
                             sum += matrixA[i][k] * transposedB[j][k];
@@ -271,9 +271,9 @@ void multiplyMatricesTransposed(int** matrixA, int** matrixB, int** result) {
 }
 
 // Function to perform SIMD-optimized matrix multiplication using AVX2 instructions
-void multiplyMatricesAVX2(int** matrixA, int** matrixB, int** result) {
+void multiplyMatricesAVX2(float** matrixA, float** matrixB, float** result) {
     // First create a transposed copy of matrix B for better cache locality
-    int** transposedB = allocateMatrix();
+    float** transposedB = allocateMatrix();
     
     // Transpose B in a cache-friendly way (using tiling)
     for (int bi = 0; bi < N; bi += BLOCK_SIZE) {
@@ -287,48 +287,48 @@ void multiplyMatricesAVX2(int** matrixA, int** matrixB, int** result) {
     }
     
     // Initialize result matrix to zeros using memset
-    memset(result[0], 0, N * N * sizeof(int));
+    memset(result[0], 0, N * N * sizeof(float));
 
     // Process in blocks for better cache locality
     for (int bi = 0; bi < N; bi += BLOCK_SIZE) {
         for (int bj = 0; bj < N; bj += BLOCK_SIZE) {
-            for (int bk = 0; bk < N; bk += BLOCK_SIZE) {
-                // Process current block
-                for (int i = bi; i < std::min(bi + BLOCK_SIZE, N); i++) {
-                    for (int k = bk; k < std::min(bk + BLOCK_SIZE, N); k++) {
-                        // Broadcasting element from A
-                        __m256i a_val = _mm256_set1_epi32(matrixA[i][k]);
-                        
-                        // Process 8 elements at once with AVX2
-                        for (int j = bj; j < std::min(bj + BLOCK_SIZE, N - 7); j += 8) {
-                            // Get pointers to contiguous memory for more efficient access
-                            int* resultPtr = &result[i][j];
+            // Process current block
+            for (int i = bi; i < std::min(bi + BLOCK_SIZE, N); i++) {
+                // Process 8 elements at once with AVX2
+                for (int j = bj; j < std::min(bj + BLOCK_SIZE, N - 7); j += 8) {
+                    // Initialize accumulator registers to zero
+                    __m256 c_vals = _mm256_setzero_ps();
+                    
+                    // Accumulate results across all k values
+                    for (int bk = 0; bk < N; bk += BLOCK_SIZE) {
+                        for (int k = bk; k < std::min(bk + BLOCK_SIZE, N); k++) {
+                            // Broadcasting element from A
+                            __m256 a_val = _mm256_set1_ps(matrixA[i][k]);
                             
                             // Load 8 elements from transposed B
-                            __m256i b_vals = _mm256_setr_epi32(
+                            __m256 b_vals = _mm256_setr_ps(
                                 transposedB[j][k], transposedB[j+1][k], 
                                 transposedB[j+2][k], transposedB[j+3][k],
                                 transposedB[j+4][k], transposedB[j+5][k], 
                                 transposedB[j+6][k], transposedB[j+7][k]
                             );
                             
-                            // Load current values from result
-                            __m256i c_vals = _mm256_loadu_si256((__m256i*)resultPtr);
-                            
-                            // Multiply and add: c += a * b
-                            __m256i mul = _mm256_mullo_epi32(a_val, b_vals);
-                            __m256i sum = _mm256_add_epi32(c_vals, mul);
-                            
-                            // Store results back directly to memory
-                            _mm256_storeu_si256((__m256i*)resultPtr, sum);
-                        }
-                        
-                        // Handle remaining elements (if N is not divisible by 8)
-                        for (int j = (bj + (std::min(bj + BLOCK_SIZE, N) - bj) / 8 * 8); 
-                             j < std::min(bj + BLOCK_SIZE, N); j++) {
-                            result[i][j] += matrixA[i][k] * transposedB[j][k];
+                            // Use FMA to accumulate results in registers
+                            c_vals = _mm256_fmadd_ps(a_val, b_vals, c_vals);
                         }
                     }
+                    
+                    // Store accumulated results back to memory (only once per block)
+                    _mm256_storeu_ps(&result[i][j], c_vals);
+                }
+                
+                // Handle remaining elements (if N is not divisible by 8)
+                for (int j = (std::min(bj + BLOCK_SIZE, N) / 8 * 8); j < std::min(bj + BLOCK_SIZE, N); j++) {
+                    float sum = 0.0f;
+                    for (int k = 0; k < N; k++) {
+                        sum += matrixA[i][k] * transposedB[j][k];
+                    }
+                    result[i][j] = sum;
                 }
             }
         }
@@ -338,11 +338,63 @@ void multiplyMatricesAVX2(int** matrixA, int** matrixB, int** result) {
     deallocateMatrix(transposedB);
 }
 
+// Function to perform SIMD-optimized matrix multiplication using AVX2 instructions
+// without transposing matrix B (direct access)
+void multiplyMatricesAVX2NoTranspose(float** matrixA, float** matrixB, float** result) {
+    // Initialize result matrix to zeros using memset
+    memset(result[0], 0, N * N * sizeof(float));
+
+    // Process in blocks for better cache locality
+    for (int bi = 0; bi < N; bi += BLOCK_SIZE) {
+        for (int bj = 0; bj < N; bj += BLOCK_SIZE) {
+            // Process current block
+            for (int i = bi; i < std::min(bi + BLOCK_SIZE, N); i++) {
+                // Process 8 elements at once with AVX2
+                for (int j = bj; j < std::min(bj + BLOCK_SIZE, N - 7); j += 8) {
+                    // Initialize accumulator registers to zero
+                    __m256 c_vals = _mm256_setzero_ps();
+                    
+                    // Accumulate results across all k values
+                    for (int bk = 0; bk < N; bk += BLOCK_SIZE) {
+                        for (int k = bk; k < std::min(bk + BLOCK_SIZE, N); k++) {
+                            // Broadcasting element from A
+                            __m256 a_val = _mm256_set1_ps(matrixA[i][k]);
+                            
+                            // Load 8 elements from B - direct access without transposition
+                            // This requires 8 separate loads, which is less cache efficient
+                            __m256 b_vals = _mm256_setr_ps(
+                                matrixB[k][j], matrixB[k][j+1], 
+                                matrixB[k][j+2], matrixB[k][j+3],
+                                matrixB[k][j+4], matrixB[k][j+5], 
+                                matrixB[k][j+6], matrixB[k][j+7]
+                            );
+                            
+                            // Use FMA to accumulate results in registers
+                            c_vals = _mm256_fmadd_ps(a_val, b_vals, c_vals);
+                        }
+                    }
+                    
+                    // Store accumulated results back to memory (only once per block)
+                    _mm256_storeu_ps(&result[i][j], c_vals);
+                }
+                
+                // Handle remaining elements (if N is not divisible by 8)
+                for (int j = (std::min(bj + BLOCK_SIZE, N) / 8 * 8); j < std::min(bj + BLOCK_SIZE, N); j++) {
+                    float sum = 0.0f;
+                    for (int k = 0; k < N; k++) {
+                        sum += matrixA[i][k] * matrixB[k][j];
+                    }
+                    result[i][j] = sum;
+                }
+            }
+        }
+    }
+}
+
 // Function to perform multithreaded matrix multiplication with SIMD and transposition
-void multiplyMatricesThreaded(int** matrixA, int** matrixB, int** result) {
-    
+void multiplyMatricesThreaded(float** matrixA, float** matrixB, float** result) {
     // First create a transposed copy of matrix B for better cache locality
-    int** transposedB = allocateMatrix();
+    float** transposedB = allocateMatrix();
     
     // Transpose B in a cache-friendly way (using tiling) - this is still sequential
     for (int bi = 0; bi < N; bi += BLOCK_SIZE) {
@@ -356,49 +408,48 @@ void multiplyMatricesThreaded(int** matrixA, int** matrixB, int** result) {
     }
     
     // Initialize result matrix to zeros using memset
-    memset(result[0], 0, N * N * sizeof(int));
+    memset(result[0], 0, N * N * sizeof(float));
 
     // Function for each thread to process a subset of rows
     auto threadFunction = [&](int startRow, int endRow, int threadId) {
-        
         for (int i = startRow; i < endRow; i++) {
             // Process this row in blocks for better cache locality
             for (int bj = 0; bj < N; bj += BLOCK_SIZE) {
-                for (int bk = 0; bk < N; bk += BLOCK_SIZE) {
-                    for (int k = bk; k < std::min(bk + BLOCK_SIZE, N); k++) {
-                        // Broadcasting element from A
-                        __m256i a_val = _mm256_set1_epi32(matrixA[i][k]);
-                        
-                        // Process 8 elements at once with AVX2
-                        for (int j = bj; j < std::min(bj + BLOCK_SIZE, N - 7); j += 8) {
-                            // Get pointers to contiguous memory for more efficient access
-                            int* resultPtr = &result[i][j];
+                // Process 8 elements at once with AVX2
+                for (int j = bj; j < std::min(bj + BLOCK_SIZE, N - 7); j += 8) {
+                    // Initialize accumulator registers to zero
+                    __m256 c_vals = _mm256_setzero_ps();
+                    
+                    // Accumulate results across all k values
+                    for (int bk = 0; bk < N; bk += BLOCK_SIZE) {
+                        for (int k = bk; k < std::min(bk + BLOCK_SIZE, N); k++) {
+                            // Broadcasting element from A
+                            __m256 a_val = _mm256_set1_ps(matrixA[i][k]);
                             
                             // Load 8 elements from transposed B
-                            __m256i b_vals = _mm256_setr_epi32(
+                            __m256 b_vals = _mm256_setr_ps(
                                 transposedB[j][k], transposedB[j+1][k], 
                                 transposedB[j+2][k], transposedB[j+3][k],
                                 transposedB[j+4][k], transposedB[j+5][k], 
                                 transposedB[j+6][k], transposedB[j+7][k]
                             );
                             
-                            // Load current values from result
-                            __m256i c_vals = _mm256_loadu_si256((__m256i*)resultPtr);
-                            
-                            // Multiply and add: c += a * b
-                            __m256i mul = _mm256_mullo_epi32(a_val, b_vals);
-                            __m256i sum = _mm256_add_epi32(c_vals, mul);
-                            
-                            // Store results back directly to memory
-                            _mm256_storeu_si256((__m256i*)resultPtr, sum);
-                        }
-                        
-                        // Handle remaining elements (if N is not divisible by 8)
-                        for (int j = (bj + (std::min(bj + BLOCK_SIZE, N) - bj) / 8 * 8); 
-                             j < std::min(bj + BLOCK_SIZE, N); j++) {
-                            result[i][j] += matrixA[i][k] * transposedB[j][k];
+                            // Use FMA to accumulate results in registers
+                            c_vals = _mm256_fmadd_ps(a_val, b_vals, c_vals);
                         }
                     }
+                    
+                    // Store accumulated results back to memory (only once per block)
+                    _mm256_storeu_ps(&result[i][j], c_vals);
+                }
+                
+                // Handle remaining elements (if N is not divisible by 8)
+                for (int j = (std::min(bj + BLOCK_SIZE, N) / 8 * 8); j < std::min(bj + BLOCK_SIZE, N); j++) {
+                    float sum = 0.0f;
+                    for (int k = 0; k < N; k++) {
+                        sum += matrixA[i][k] * transposedB[j][k];
+                    }
+                    result[i][j] = sum;
                 }
             }
         }
@@ -424,9 +475,9 @@ void multiplyMatricesThreaded(int** matrixA, int** matrixB, int** result) {
 }
 
 // Function to perform highly optimized matrix multiplication without SIMD intrinsics
-void multiplyMatricesOptimizedNoSIMD(int** matrixA, int** matrixB, int** result) {
+void multiplyMatricesOptimizedNoSIMD(float** matrixA, float** matrixB, float** result) {
     // First create a transposed copy of matrix B for better cache locality
-    int** transposedB = allocateMatrix();
+    float** transposedB = allocateMatrix();
     
     // Transpose B in a cache-friendly way (using tiling)
     for (int bi = 0; bi < N; bi += BLOCK_SIZE) {
@@ -440,7 +491,7 @@ void multiplyMatricesOptimizedNoSIMD(int** matrixA, int** matrixB, int** result)
     }
     
     // Initialize result matrix to zeros using memset
-    memset(result[0], 0, N * N * sizeof(int));
+    memset(result[0], 0, N * N * sizeof(float));
     
     // Cache-aware multiplication with loop interchange for better performance
     for (int bi = 0; bi < N; bi += BLOCK_SIZE) {
@@ -450,7 +501,7 @@ void multiplyMatricesOptimizedNoSIMD(int** matrixA, int** matrixB, int** result)
                 for (int i = bi; i < std::min(bi + BLOCK_SIZE, N); i++) {
                     for (int j = bj; j < std::min(bj + BLOCK_SIZE, N); j++) {
                         // Use a register to accumulate results
-                        int sum = result[i][j];
+                        float sum = result[i][j];
                         
                         // Unroll the inner loop by 4 for better instruction-level parallelism
                         int k = bk;
@@ -480,10 +531,10 @@ void multiplyMatricesOptimizedNoSIMD(int** matrixA, int** matrixB, int** result)
 }
 
 // Function to perform multithreaded optimized matrix multiplication without SIMD intrinsics
-void multiplyMatricesOptimizedNoSIMDThreaded(int** matrixA, int** matrixB, int** result) {
+void multiplyMatricesOptimizedNoSIMDThreaded(float** matrixA, float** matrixB, float** result) {
     
     // First create a transposed copy of matrix B for better cache locality
-    int** transposedB = allocateMatrix();
+    float** transposedB = allocateMatrix();
     
     // Transpose B in a cache-friendly way (using tiling) - this is still sequential
     for (int bi = 0; bi < N; bi += BLOCK_SIZE) {
@@ -497,7 +548,7 @@ void multiplyMatricesOptimizedNoSIMDThreaded(int** matrixA, int** matrixB, int**
     }
     
     // Initialize result matrix to zeros using memset
-    memset(result[0], 0, N * N * sizeof(int));
+    memset(result[0], 0, N * N * sizeof(float));
 
     // Function for each thread to process a subset of rows
     auto threadFunction = [&](int startRow, int endRow, int threadId) {
@@ -510,7 +561,7 @@ void multiplyMatricesOptimizedNoSIMDThreaded(int** matrixA, int** matrixB, int**
                     // Process current block with loop interchange
                     for (int j = bj; j < std::min(bj + BLOCK_SIZE, N); j++) {
                         // Use a register to accumulate results
-                        int sum = result[i][j];
+                        float sum = result[i][j];
                         
                         // Unroll the inner loop by 4 for better instruction-level parallelism
                         int k = bk;
@@ -554,6 +605,73 @@ void multiplyMatricesOptimizedNoSIMDThreaded(int** matrixA, int** matrixB, int**
     deallocateMatrix(transposedB);
 }
 
+// Function to perform multithreaded matrix multiplication with AVX2 instructions
+// without transposing matrix B (direct access)
+void multiplyMatricesThreadedAVX2NoTranspose(float** matrixA, float** matrixB, float** result) {
+    // Initialize result matrix to zeros using memset
+    memset(result[0], 0, N * N * sizeof(float));
+
+    // Function for each thread to process a subset of rows
+    auto threadFunction = [&](int startRow, int endRow, int threadId) {
+        for (int i = startRow; i < endRow; i++) {
+            // Process this row in blocks for better cache locality
+            for (int bj = 0; bj < N; bj += BLOCK_SIZE) {
+                // Process 8 elements at once with AVX2
+                for (int j = bj; j < std::min(bj + BLOCK_SIZE, N - 7); j += 8) {
+                    // Initialize accumulator registers to zero
+                    __m256 c_vals = _mm256_setzero_ps();
+                    
+                    // Accumulate results across all k values
+                    for (int bk = 0; bk < N; bk += BLOCK_SIZE) {
+                        for (int k = bk; k < std::min(bk + BLOCK_SIZE, N); k++) {
+                            // Broadcasting element from A
+                            __m256 a_val = _mm256_set1_ps(matrixA[i][k]);
+                            
+                            // Load 8 elements from B - direct access without transposition
+                            __m256 b_vals = _mm256_setr_ps(
+                                matrixB[k][j], matrixB[k][j+1], 
+                                matrixB[k][j+2], matrixB[k][j+3],
+                                matrixB[k][j+4], matrixB[k][j+5], 
+                                matrixB[k][j+6], matrixB[k][j+7]
+                            );
+                            
+                            // Use FMA to accumulate results in registers
+                            c_vals = _mm256_fmadd_ps(a_val, b_vals, c_vals);
+                        }
+                    }
+                    
+                    // Store accumulated results back to memory (only once per block)
+                    _mm256_storeu_ps(&result[i][j], c_vals);
+                }
+                
+                // Handle remaining elements (if N is not divisible by 8)
+                for (int j = (std::min(bj + BLOCK_SIZE, N) / 8 * 8); j < std::min(bj + BLOCK_SIZE, N); j++) {
+                    float sum = 0.0f;
+                    for (int k = 0; k < N; k++) {
+                        sum += matrixA[i][k] * matrixB[k][j];
+                    }
+                    result[i][j] = sum;
+                }
+            }
+        }
+    };
+    
+    // Create and launch threads
+    std::vector<std::thread> threads;
+    int rowsPerThread = N / NUM_THREADS;
+    
+    for (unsigned int t = 0; t < NUM_THREADS; t++) {
+        int startRow = t * rowsPerThread;
+        int endRow = (t == NUM_THREADS - 1) ? N : (t + 1) * rowsPerThread;
+        threads.push_back(std::thread(threadFunction, startRow, endRow, t));
+    }
+    
+    // Wait for all threads to finish
+    for (unsigned int t = 0; t < threads.size(); t++) {
+        threads[t].join();
+    }
+}
+
 // Add this structure to store benchmark results
 struct BenchmarkResult {
     std::string methodName;
@@ -565,8 +683,8 @@ struct BenchmarkResult {
 std::vector<BenchmarkResult> benchmarkResults;
 
 // Update the benchmarking function to store results
-void benchmarkMultiplication(int** matrixA, int** matrixB, int** result, 
-                            void (*multiplyFunc)(int**, int**, int**),
+void benchmarkMultiplication(float** matrixA, float** matrixB, float** result, 
+                            void (*multiplyFunc)(float**, float**, float**),
                             const std::string& methodName) {
     log("Beginning benchmark of " + methodName);
     
@@ -667,6 +785,20 @@ void displayPerformanceComparisonTable() {
     std::cout << "---------------------------------------------------------" << std::endl;
 }
 
+// Add this function above main()
+bool almostEqual(float a, float b) {
+    const float absoluteEpsilon = 1e-6f;
+    const float relativeEpsilon = 1e-5f;
+    
+    // Handle exact equality and very small numbers
+    if (a == b || (std::fabs(a) < absoluteEpsilon && std::fabs(b) < absoluteEpsilon)) {
+        return true;
+    }
+    
+    // Check relative error
+    return std::fabs(a - b) <= relativeEpsilon * std::max(std::fabs(a), std::fabs(b));
+}
+
 // Update main function to accept arguments
 int main(int argc, char* argv[]) {
     try {
@@ -719,19 +851,21 @@ int main(int argc, char* argv[]) {
         log("Setting up random number generation");
         std::random_device rd;
         std::mt19937 gen(rd());
-        std::uniform_int_distribution<int> dist(1, 10); // Random integers from 1 to 10
+        std::uniform_real_distribution<float> dist(1.0f, 10.0f); // Random floats from 1.0 to 10.0
         
         // Allocate matrices on the heap
         log("Allocating matrices");
-        int** aMatrix = allocateMatrix();
-        int** bMatrix = allocateMatrix();
-        int** product = allocateMatrix();
-        int** productOptimized = allocateMatrix();
-        int** productTransposed = allocateMatrix();
-        int** productAVX2 = allocateMatrix();
-        int** productThreaded = allocateMatrix();
-        int** productOptimizedNoSIMD = allocateMatrix();
-        int** productOptimizedNoSIMDThreaded = allocateMatrix();
+        float** aMatrix = allocateMatrix();
+        float** bMatrix = allocateMatrix();
+        float** product = allocateMatrix();
+        float** productOptimized = allocateMatrix();
+        float** productTransposed = allocateMatrix();
+        float** productAVX2 = allocateMatrix();
+        float** productThreaded = allocateMatrix();
+        float** productOptimizedNoSIMD = allocateMatrix();
+        float** productOptimizedNoSIMDThreaded = allocateMatrix();
+        float** productAVX2NoTranspose = allocateMatrix();
+        float** productThreadedAVX2NoTranspose = allocateMatrix();
         
         // Initialize matrices with random values
         log("Initializing matrices with random values");
@@ -761,6 +895,12 @@ int main(int argc, char* argv[]) {
         // Perform multithreaded optimized matrix multiplication without SIMD with timing
         benchmarkMultiplication(aMatrix, bMatrix, productOptimizedNoSIMDThreaded, multiplyMatricesOptimizedNoSIMDThreaded, "Multithreaded optimized multiplication without SIMD");
         
+        // Perform AVX2 matrix multiplication without transposition with timing
+        benchmarkMultiplication(aMatrix, bMatrix, productAVX2NoTranspose, multiplyMatricesAVX2NoTranspose, "AVX2 multiplication without transposition");
+        
+        // Perform multithreaded AVX2 matrix multiplication without transposition with timing
+        benchmarkMultiplication(aMatrix, bMatrix, productThreadedAVX2NoTranspose, multiplyMatricesThreadedAVX2NoTranspose, "Multithreaded AVX2 multiplication without transposition");
+        
         // Verify correctness
         log("Verifying correctness of results from all multiplication methods");
         bool isEqual = true;
@@ -769,12 +909,14 @@ int main(int argc, char* argv[]) {
                 log("Verification progress: checking row " + std::to_string(i) + " of " + std::to_string(N));
             }
             for (int j = 0; j < N && isEqual; j++) {
-                if (product[i][j] != productOptimized[i][j] || 
-                    product[i][j] != productTransposed[i][j] || 
-                    product[i][j] != productAVX2[i][j] || 
-                    product[i][j] != productThreaded[i][j] || 
-                    product[i][j] != productOptimizedNoSIMD[i][j] || 
-                    product[i][j] != productOptimizedNoSIMDThreaded[i][j]) {
+                if (!almostEqual(product[i][j], productOptimized[i][j]) || 
+                    !almostEqual(product[i][j], productTransposed[i][j]) || 
+                    !almostEqual(product[i][j], productAVX2[i][j]) || 
+                    !almostEqual(product[i][j], productThreaded[i][j]) || 
+                    !almostEqual(product[i][j], productOptimizedNoSIMD[i][j]) || 
+                    !almostEqual(product[i][j], productOptimizedNoSIMDThreaded[i][j]) ||
+                    !almostEqual(product[i][j], productAVX2NoTranspose[i][j]) ||
+                    !almostEqual(product[i][j], productThreadedAVX2NoTranspose[i][j])) {
                     isEqual = false;
                     log("ALERT: Discrepancy found at position [" + std::to_string(i) + "][" + std::to_string(j) + "]");
                     std::cout << "Discrepancy found at position [" << i << "][" << j << "]:\n" 
@@ -784,7 +926,9 @@ int main(int argc, char* argv[]) {
                               << "  AVX2: " << productAVX2[i][j] << "\n"
                               << "  Multithreaded: " << productThreaded[i][j] << "\n"
                               << "  Optimized No SIMD: " << productOptimizedNoSIMD[i][j] << "\n"
-                              << "  Multithreaded Optimized No SIMD: " << productOptimizedNoSIMDThreaded[i][j] << std::endl;
+                              << "  Multithreaded Optimized No SIMD: " << productOptimizedNoSIMDThreaded[i][j] << "\n"
+                              << "  AVX2 No Transpose: " << productAVX2NoTranspose[i][j] << "\n"
+                              << "  Multithreaded AVX2 No Transpose: " << productThreadedAVX2NoTranspose[i][j] << std::endl;
                 }
             }
         }
@@ -805,7 +949,7 @@ int main(int argc, char* argv[]) {
         std::cout << "CPU threads: " << NUM_THREADS << " (of " << std::thread::hardware_concurrency() << " available)" << std::endl;
         
         // Print memory usage
-        double memoryUsageKB = (matrixAllocations * sizeof(int) * N * N) / 1024.0;
+        double memoryUsageKB = (matrixAllocations * sizeof(float) * N * N) / 1024.0;
         double memoryUsageMB = memoryUsageKB / 1024.0;
         std::cout << "Total memory usage: " << std::fixed << std::setprecision(2);
         if (memoryUsageMB >= 1.0) {
@@ -830,6 +974,8 @@ int main(int argc, char* argv[]) {
         deallocateMatrix(productThreaded);
         deallocateMatrix(productOptimizedNoSIMD);
         deallocateMatrix(productOptimizedNoSIMDThreaded);
+        deallocateMatrix(productAVX2NoTranspose);
+        deallocateMatrix(productThreadedAVX2NoTranspose);
         
         // Check for memory leaks
         log("Checking for memory leaks");
