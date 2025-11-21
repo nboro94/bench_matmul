@@ -11,6 +11,9 @@
 #include <immintrin.h>  // Intel SIMD intrinsics for AVX2 operations
 #include <thread>       // Threading support
 #include <cstring>      // C-style string operations (memset, etc.)
+#include <unordered_map>
+#include <set>
+#include <sstream>
 
 // Global logging control
 // Set to true for detailed execution logs, false for minimal output
@@ -643,8 +646,8 @@ void multiplyMatricesThreaded(float** matrixA, float** matrixB, float** result) 
     }
     
     // Wait for all threads to complete
-    for (unsigned int t = 0; t < threads.size(); t++) {
-        threads[t].join();
+    for (auto& thread : threads) {
+        thread.join();
     }
     
     // Release temporary transposed matrix
@@ -1014,24 +1017,95 @@ int main(int argc, char* argv[]) {
         log("Matrix multiplication benchmark program starting");
         
         // Process command line arguments for matrix dimensions
+        // - positional numeric argument sets N (matrix dimension)
+        // - --list prints available methods and exits
+        // - --run=name1,name2,... or --run name1,name2,... selects methods to run
+        std::set<std::string> methodsToRun;
+        bool listOnly = false;
         if (argc > 1) {
-            try {
-                N = std::stoi(argv[1]);
-                if (N <= 0) {
-                    std::cerr << "ERROR: Matrix dimension must be positive. Using default N = 512" << std::endl;
-                    N = 512;
+            for (int argi = 1; argi < argc; ++argi) {
+                std::string a = argv[argi];
+                if (a == "--list") {
+                    listOnly = true;
+                } else if (a.rfind("--run=", 0) == 0) {
+                    std::string payload = a.substr(6);
+                    std::stringstream ss(payload);
+                    std::string token;
+                    while (std::getline(ss, token, ',')) {
+                        if (!token.empty()) methodsToRun.insert(token);
+                    }
+                } else if (a == "--run" && argi + 1 < argc) {
+                    std::string payload = argv[++argi];
+                    std::stringstream ss(payload);
+                    std::string token;
+                    while (std::getline(ss, token, ',')) {
+                        if (!token.empty()) methodsToRun.insert(token);
+                    }
                 } else {
-                    std::cout << "Using matrix dimension N = " << N << " from command line argument" << std::endl;
+                    // If argument doesn't look like a flag, try to parse it as matrix size
+                    bool looksLikeNumber = !a.empty();
+                    for (char c : a) {
+                        if (!std::isdigit(static_cast<unsigned char>(c))) { looksLikeNumber = false; break; }
+                    }
+                    if (looksLikeNumber) {
+                        try {
+                            int parsedN = std::stoi(a);
+                            if (parsedN <= 0) {
+                                std::cerr << "ERROR: Matrix dimension must be positive. Using default N = 512" << std::endl;
+                            } else {
+                                N = parsedN;
+                                std::cout << "Using matrix dimension N = " << N << " from command line argument" << std::endl;
+                            }
+                        } catch (const std::exception& e) {
+                            std::cerr << "ERROR: Invalid matrix dimension: '" << a 
+                                    << "'. Using default N = 512" << std::endl;
+                            N = 512;
+                        }
+                    } else {
+                        // Unrecognized token; ignore but log when verbose
+                        log("Ignoring unrecognized command-line token: " + a);
+                    }
                 }
-            } catch (const std::exception& e) {
-                std::cerr << "ERROR: Invalid matrix dimension: '" << argv[1] 
-                          << "'. Using default N = 512" << std::endl;
-                N = 512;
             }
         } else {
-            std::cout << "No dimension specified. Using default N = 512" << std::endl;
+            // No arguments: print usage and available methods, then exit
+            std::cout << "No command-line arguments detected.\n\n";
+            std::cout << "Usage:\n";
+            std::cout << "  [N]                : set matrix dimension (positive integer)\n";
+            std::cout << "  --list             : list available multiplication methods\n";
+            std::cout << "  --run=name1,name2  : run only the named methods (comma-separated)\n\n";
+            std::cout << "Available multiplication methods:\n";
+            std::cout << "  Naive-ijkLoop\n";
+            std::cout << "  BlockTiled-CacheAware\n";
+            std::cout << "  SIMD-AVX2-Transposed\n";
+            std::cout << "  RowColumn-Transposed\n";
+            std::cout << "  Scalar-LoopUnrolled\n";
+            std::cout << "  Parallel-SIMD-AVX2\n";
+            std::cout << "  Parallel-Scalar-LoopUnrolled\n";
+            std::cout << "  SIMD-AVX2-Direct\n";
+            std::cout << "  Parallel-SIMD-Direct\n";
+            std::cout << "  BlockLocal-StackTranspose\n\n";
+            std::cout << "Example:\n";
+            std::cout << "  ./bench-matmul 1024 --run=BlockTiled-CacheAware,SIMD-AVX2-Transposed\n\n";
+            return 0;
         }
         
+        // If user requested just the list, print it now and exit before any heavy work
+        if (listOnly) {
+            std::cout << "Available multiplication methods:\n";
+            std::cout << "  Naive-ijkLoop\n";
+            std::cout << "  BlockTiled-CacheAware\n";
+            std::cout << "  SIMD-AVX2-Transposed\n";
+            std::cout << "  RowColumn-Transposed\n";
+            std::cout << "  Scalar-LoopUnrolled\n";
+            std::cout << "  Parallel-SIMD-AVX2\n";
+            std::cout << "  Parallel-Scalar-LoopUnrolled\n";
+            std::cout << "  SIMD-AVX2-Direct\n";
+            std::cout << "  Parallel-SIMD-Direct\n";
+            std::cout << "  BlockLocal-StackTranspose\n";
+            return 0;
+        }
+
         log("Matrix dimension set to N = " + std::to_string(N));
         
         // Check if dimension is optimal (power of 2)
@@ -1081,87 +1155,108 @@ int main(int argc, char* argv[]) {
         initializeRandomMatrixFast(aMatrix, gen, dist);
         initializeRandomMatrixFast(bMatrix, gen, dist);
         
-        // Execute benchmarks for all implementations
+        // Map available methods to function pointers and product buffers
+        std::vector<std::pair<std::string, void(*)(float**, float**, float**)>> allMethods = {
+            {"Naive-ijkLoop", multiplyMatrices},
+            {"BlockTiled-CacheAware", multiplyMatricesOptimized},
+            {"SIMD-AVX2-Transposed", multiplyMatricesAVX2},
+            {"RowColumn-Transposed", multiplyMatricesTransposed},
+            {"Scalar-LoopUnrolled", multiplyMatricesOptimizedNoSIMD},
+            {"Parallel-SIMD-AVX2", multiplyMatricesThreaded},
+            {"Parallel-Scalar-LoopUnrolled", multiplyMatricesOptimizedNoSIMDThreaded},
+            {"SIMD-AVX2-Direct", multiplyMatricesAVX2NoTranspose},
+            {"Parallel-SIMD-Direct", multiplyMatricesThreadedAVX2NoTranspose},
+            {"BlockLocal-StackTranspose", multiplyMatricesLocalTranspose}
+        };
+        
+        // Map method names to product buffers (so benchmarks write to correct matrices)
+        std::unordered_map<std::string, float**> productMap = {
+            {"Naive-ijkLoop", product},
+            {"BlockTiled-CacheAware", productOptimized},
+            {"SIMD-AVX2-Transposed", productAVX2},
+            {"RowColumn-Transposed", productTransposed},
+            {"Scalar-LoopUnrolled", productOptimizedNoSIMD},
+            {"Parallel-SIMD-AVX2", productThreaded},
+            {"Parallel-Scalar-LoopUnrolled", productOptimizedNoSIMDThreaded},
+            {"SIMD-AVX2-Direct", productAVX2NoTranspose},
+            {"Parallel-SIMD-Direct", productThreadedAVX2NoTranspose},
+            {"BlockLocal-StackTranspose", productLocalTranspose}
+        };
+        
+        // If user requested list, print available methods and exit
+        if (listOnly) {
+            std::cout << "Available multiplication methods:\n";
+            for (const auto &m : allMethods) {
+                std::cout << "  " << m.first << "\n";
+            }
+            // Clean up before exit
+            deallocateMatrix(aMatrix);
+            deallocateMatrix(bMatrix);
+            deallocateMatrix(product);
+            deallocateMatrix(productOptimized);
+            deallocateMatrix(productTransposed);
+            deallocateMatrix(productAVX2);
+            deallocateMatrix(productThreaded);
+            deallocateMatrix(productOptimizedNoSIMD);
+            deallocateMatrix(productOptimizedNoSIMDThreaded);
+            deallocateMatrix(productAVX2NoTranspose);
+            deallocateMatrix(productThreadedAVX2NoTranspose);
+            deallocateMatrix(productLocalTranspose);
+            checkMemoryLeaks();
+            return 0;
+        }
+        
+        // If user specified methods, ensure the baseline exists (Naive-ijkLoop).
+        // If baseline not requested, we will still run it to have a reference.
+        if (!methodsToRun.empty() && methodsToRun.find("Naive-ijkLoop") == methodsToRun.end()) {
+            log("Baseline 'Naive-ijkLoop' not requested; including it automatically for reference");
+            methodsToRun.insert("Naive-ijkLoop");
+        }
+        
+        // If user did not restrict methods, run all
+        auto shouldRun = [&](const std::string &name) -> bool {
+            return methodsToRun.empty() || methodsToRun.find(name) != methodsToRun.end();
+        };
+        
+        // Execute benchmarks for selected implementations
         log("Beginning benchmark sequence");
+        for (const auto &entry : allMethods) {
+            const std::string &name = entry.first;
+            auto func = entry.second;
+            if (!shouldRun(name)) continue;
+            
+            // find the corresponding product buffer
+            float** outBuf = productMap[name];
+            benchmarkMultiplication(aMatrix, bMatrix, outBuf, func, name);
+        }
         
-        // Base algorithm (naive triple loop)
-        benchmarkMultiplication(aMatrix, bMatrix, product, multiplyMatrices, "Naive-ijkLoop");
-
-        // Cache-blocking without transposition
-        benchmarkMultiplication(aMatrix, bMatrix, productOptimized, multiplyMatricesOptimized, 
-                                "BlockTiled-CacheAware");
-
-        // SIMD-accelerated implementation
-        benchmarkMultiplication(aMatrix, bMatrix, productAVX2, multiplyMatricesAVX2, "SIMD-AVX2-Transposed");
-
-        // Transposition with blocking
-        benchmarkMultiplication(aMatrix, bMatrix, productTransposed, multiplyMatricesTransposed, 
-                                "RowColumn-Transposed");
-
-        // Optimized scalar implementation
-        benchmarkMultiplication(aMatrix, bMatrix, productOptimizedNoSIMD, multiplyMatricesOptimizedNoSIMD, 
-                                "Scalar-LoopUnrolled");
-
-        // Multithreaded SIMD implementation
-        benchmarkMultiplication(aMatrix, bMatrix, productThreaded, multiplyMatricesThreaded, 
-                                "Parallel-SIMD-AVX2");
-
-        // Multithreaded scalar implementation
-        benchmarkMultiplication(aMatrix, bMatrix, productOptimizedNoSIMDThreaded, multiplyMatricesOptimizedNoSIMDThreaded, 
-                                "Parallel-Scalar-LoopUnrolled");
-
-        // SIMD without transposition
-        benchmarkMultiplication(aMatrix, bMatrix, productAVX2NoTranspose, multiplyMatricesAVX2NoTranspose, 
-                                "SIMD-AVX2-Direct");
-
-        // Multithreaded SIMD without transposition
-        benchmarkMultiplication(aMatrix, bMatrix, productThreadedAVX2NoTranspose, multiplyMatricesThreadedAVX2NoTranspose, 
-                                "Parallel-SIMD-Direct");
-
-        // Local transposition approach
-        benchmarkMultiplication(aMatrix, bMatrix, productLocalTranspose, multiplyMatricesLocalTranspose, 
-                                "BlockLocal-StackTranspose");
-        
-        // Verify correctness of all implementations
-        log("Verifying correctness of results from all multiplication methods");
+        // Verify correctness of all implementations that were run
+        log("Verifying correctness of results from selected multiplication methods");
+        // Identify baseline (Naive-ijkLoop) pointer (must exist after selection logic)
+        float** baselineBuf = productMap["Naive-ijkLoop"];
         bool isEqual = true;
+        // Build list of methods that were run (excluding baseline)
+        std::vector<std::string> runMethods;
+        for (const auto &entry : allMethods) {
+            if (shouldRun(entry.first) && entry.first != "Naive-ijkLoop") {
+                runMethods.push_back(entry.first);
+            }
+        }
+        
         for (int i = 0; i < N; i++) {
-            // Periodically report progress for large matrices
             if (i % 1000 == 0) {
                 log("Verification progress: checking row " + std::to_string(i) + " of " + std::to_string(N));
             }
-            
             for (int j = 0; j < N; j++) {
-                // Compare each implementation's results against the baseline
-                if (!almostEqual(product[i][j], productOptimized[i][j]) || 
-                    !almostEqual(product[i][j], productTransposed[i][j]) || 
-                    !almostEqual(product[i][j], productAVX2[i][j]) || 
-                    !almostEqual(product[i][j], productThreaded[i][j]) || 
-                    !almostEqual(product[i][j], productOptimizedNoSIMD[i][j]) || 
-                    !almostEqual(product[i][j], productOptimizedNoSIMDThreaded[i][j]) ||
-                    !almostEqual(product[i][j], productAVX2NoTranspose[i][j]) ||
-                    !almostEqual(product[i][j], productThreadedAVX2NoTranspose[i][j]) ||
-                    !almostEqual(product[i][j], productLocalTranspose[i][j])) {
-                    
-                    // Report discrepancy with detailed values
-                    isEqual = false;
-                    log("ALERT: Discrepancy found at position [" + std::to_string(i) + "][" + std::to_string(j) + "]");
-                    std::cout << "Discrepancy found at position [" << i << "][" << j << "]:\n" 
-                            << "  Standard: " << product[i][j] << "\n"
-                            << "  Tiled: " << productOptimized[i][j] << "\n"
-                            << "  Transposed: " << productTransposed[i][j] << "\n"
-                            << "  AVX2: " << productAVX2[i][j] << "\n"
-                            << "  Multithreaded: " << productThreaded[i][j] << "\n"
-                            << "  Optimized No SIMD: " << productOptimizedNoSIMD[i][j] << "\n"
-                            << "  Multithreaded Optimized No SIMD: " << productOptimizedNoSIMDThreaded[i][j] << "\n"
-                            << "  AVX2 No Transpose: " << productAVX2NoTranspose[i][j] << "\n"
-                            << "  Multithreaded AVX2 No Transpose: " << productThreadedAVX2NoTranspose[i][j] << "\n"
-                            << "  Local Transpose: " << productLocalTranspose[i][j] << std::endl;
-                    
-                    // Throw an error after printing all the diagnostic information
-                    throw std::runtime_error("Result mismatch detected at position [" + 
-                                            std::to_string(i) + "][" + std::to_string(j) + 
-                                            "]. Calculation results are inconsistent across implementations.");
+                for (const auto &mname : runMethods) {
+                    float** cmpBuf = productMap[mname];
+                    if (!almostEqual(baselineBuf[i][j], cmpBuf[i][j])) {
+                        isEqual = false;
+                        log("ALERT: Discrepancy found at position [" + std::to_string(i) + "][" + std::to_string(j) + "] between baseline and " + mname);
+                        std::cout << "Discrepancy at [" << i << "][" << j << "]: baseline=" << baselineBuf[i][j]
+                                  << "  " << mname << "=" << cmpBuf[i][j] << std::endl;
+                        throw std::runtime_error("Result mismatch detected at position [" + std::to_string(i) + "][" + std::to_string(j) + "]");
+                    }
                 }
             }
         }
