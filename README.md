@@ -55,6 +55,16 @@ Example:
 ./bench-matmul 1024  # Run with 1024x1024 matrices
 ```
 
+Command-line options
+- `--list` : Print the available multiplication methods and exit (no heavy initialization).
+- `--run=name1,name2,...` : Run only the named multiplication methods (comma-separated). If omitted, all methods are benchmarked. Names must match the implementation labels below; the `run_benchmarks.py` script supports short aliases.
+
+Examples:
+```bash
+./bench-matmul --list
+./bench-matmul 1024 --run=Naive-ijkLoop,BlockTiled-CacheAware
+```
+
 ### Automated Benchmarking
 
 You can run benchmarks for multiple matrix sizes automatically using the provided Python script:
@@ -63,13 +73,45 @@ You can run benchmarks for multiple matrix sizes automatically using the provide
 python3 run_benchmarks.py
 ```
 
-This script runs the benchmark with matrix sizes 64, 128, 512, 1024, 2048, and 4096, saving the output of each run to a separate log file in the `logs` directory.
+The script supports a few additional options to make batch runs easier:
 
-You can specify a custom path to the executable:
+- `--executable PATH` : path to the benchmark binary (default `./bench-matmul`).
+- `--run NAME1,NAME2` : comma-separated list of methods to run (supports short aliases — see below). The script will forward these as `--run=` to the executable.
+- `--sizes S1,S2` : comma-separated list of matrix sizes to run instead of the defaults.
+- `--list` : query the executable for available methods and print them (script exits).
+- `-j N / --jobs N` : run up to N sizes in parallel (concurrent jobs). Default is `1` (sequential).
+
+Examples:
 
 ```bash
-python3 run_benchmarks.py --executable /path/to/bench-matmul
+# Run the default suite with the bundled binary
+python3 run_benchmarks.py
+
+# Run only two methods for small sizes and two concurrent jobs
+python3 run_benchmarks.py --executable ./build/bench-matmul --run=naive,tiled --sizes=64,128 -j 2
+
+# Query the binary for available methods
+python3 run_benchmarks.py --executable ./build/bench-matmul --list
 ```
+
+The script saves each run's output to a timestamped log file under `logs` (or `logs_<n>` if `logs` already exists).
+
+Alias mapping (supported by `run_benchmarks.py`)
+
+You can use short, convenient aliases when calling `run_benchmarks.py`. These map to the full method labels used by the C++ binary:
+
+ - `naive` -> `Naive-ijkLoop`
+ - `tiled` -> `BlockTiled-CacheAware`
+ - `avx2` -> `SIMD-AVX2-Transposed`
+ - `avx2direct` -> `SIMD-AVX2-Direct`
+ - `transposed` -> `RowColumn-Transposed`
+ - `scalar` -> `Scalar-LoopUnrolled`
+ - `par-avx2` -> `Parallel-SIMD-AVX2`
+ - `par-scalar` -> `Parallel-Scalar-LoopUnrolled`
+ - `par-avx2-direct` -> `Parallel-SIMD-Direct`
+ - `local` -> `BlockLocal-StackTranspose`
+
+If you prefer, you can also pass the full implementation names directly to `--run`.
 
 ## Optimization Techniques
 
