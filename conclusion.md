@@ -64,6 +64,6 @@ python3 run_benchmarks.py --executable ./build/bench-matmul \
   --sizes=100,200,300,400,500,600,700,800,900,1000 -j 1
 ```
 
-##Generated artifacts
+## Generated artifacts
 
 Each run creates a human-readable text file and a CSV file under `build/logs_*` (e.g., `comparison_<methods>_<timestamp>.txt` and `.csv`). Use the CSVs for plotting and further analysis.
