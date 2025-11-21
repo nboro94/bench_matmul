@@ -1,102 +1,92 @@
-# Matrix Multiplication Benchmark
+ # bench_matmul — Matrix Multiplication Benchmark
 
-This project implements and benchmarks various matrix multiplication algorithms with different optimization techniques to demonstrate the impact of cache optimization, SIMD instructions, and multithreading on performance.
+ Concise, readable documentation for building, running, and comparing
+ the matrix multiplication implementations included in this repository.
 
-## Overview
+ ## Quickstart
 
-Matrix multiplication is a fundamental operation in many computational fields including computer graphics, machine learning, and scientific computing. This benchmark compares different implementation strategies:
+ 1. Build the project:
 
-- Standard naive multiplication
-- Cache-optimized multiplication using blocking/tiling
-- Matrix transposition for better cache locality
-- SIMD optimization using AVX2 intrinsics
-- Multithreaded parallelization
-- Combinations of the above techniques
+    ```bash
+    mkdir -p build && cd build
+    cmake ..
+    make -j
+    ```
 
-## Features
+ 2. Run the binary for a single size (default N=512):
 
-- Automatic optimal block size determination based on CPU cache
-- Automatic thread count optimization based on available CPU cores
-- Multiple benchmark iterations for stable measurements
-- Comprehensive performance comparison between implementations
-- Correctness verification across all implementations
-- Memory leak detection and reporting
-- Detailed logging for debugging and analysis
+    ```bash
+    ./bench-matmul [N]
+    ```
 
-## Requirements
+ 3. Or run the automated runner to execute many sizes and capture logs:
 
-- C++11 compatible compiler
-- CPU with AVX2 instruction support
-- CMake 2.8 or higher
-- Linux environment (for CPU cache detection)
+    ```bash
+    python3 run_benchmarks.py --executable ./build/bench-matmul
+    ```
 
-## Building
+ ## What this repository contains
 
-```bash
-mkdir build
-cd build
-cmake ..
-make -j
+- A C++ benchmarking program (`bench-matmul`) implementing multiple matrix
+  multiplication algorithms (naive, tiled, SIMD, threaded, etc.).
+- A Python helper (`run_benchmarks.py`) to run batches, capture logs, and
+  compare implementations across multiple sizes.
+
+ ## Building requirements
+
+- C++11 compiler (GCC/Clang)
+- CMake
+- Linux (the program performs simple cache-detection via `/sys`)
+- Optional: CPU with AVX2 to exercise vectorized code paths
+
+ ## Binary usage (quick reference)
+
+```text
+./bench-matmul [N] [--list] [--run=name1,name2] [--baseline=name]
 ```
 
-## Usage
-
-Run the executable with an optional parameter to specify the matrix dimension:
-
-```bash
-./bench-matmul [dimension]
-```
-
-Where:
-- `dimension`: Optional integer specifying the size of the square matrices (default: 512)
-
-Example:
-```bash
-./bench-matmul 1024  # Run with 1024x1024 matrices
-```
-
-Command-line options
-- `--list` : Print the available multiplication methods and exit (no heavy initialization).
-- `--run=name1,name2,...` : Run only the named multiplication methods (comma-separated). If omitted, all methods are benchmarked. Names must match the implementation labels below; the `run_benchmarks.py` script supports short aliases.
+- `N` — matrix dimension (optional, default 512)
+- `--list` — print available implementations and exit (fast, no allocation)
+- `--run` — run only the named implementations (comma-separated)
+- `--baseline` — request a specific baseline name (used for reporting)
 
 Examples:
+
 ```bash
+# list methods
 ./bench-matmul --list
-./bench-matmul 1024 --run=Naive-ijkLoop,BlockTiled-CacheAware
+
+# run two specific implementations for N=1024
+./bench-matmul 1024 --run=BlockTiled-CacheAware,SIMD-AVX2-Transposed
+
+# force baseline selection
+./bench-matmul 512 --run=BlockTiled-CacheAware --baseline=Naive-ijkLoop
 ```
 
-### Automated Benchmarking
+## Automated runner (`run_benchmarks.py`)
 
-You can run benchmarks for multiple matrix sizes automatically using the provided Python script:
+Purpose: run multiple matrix sizes, capture stdout to timestamped logs, run
+comparisons, and parallelize runs across sizes.
 
-```bash
-python3 run_benchmarks.py
-```
+Important CLI options
+- `--executable PATH` — path to `bench-matmul` (default `./bench-matmul`).
+- `--run NAME1,NAME2` — methods to pass through to the binary (aliases supported).
+- `--baseline NAME` — an optional baseline alias/name forwarded to the binary.
+- `--sizes S1,S2` — comma-separated sizes to benchmark (defaults: 64,128,512,1024).
+- `--compare M1,M2,...` — run and compare the listed methods (at least two).
+- `-j N` / `--jobs N` — run up to `N` sizes concurrently (default `1`).
 
-The script supports a few additional options to make batch runs easier:
-
-- `--executable PATH` : path to the benchmark binary (default `./bench-matmul`).
-- `--run NAME1,NAME2` : comma-separated list of methods to run (supports short aliases — see below). The script will forward these as `--run=` to the executable.
-- `--sizes S1,S2` : comma-separated list of matrix sizes to run instead of the defaults.
-- `--list` : query the executable for available methods and print them (script exits).
-- `-j N / --jobs N` : run up to N sizes in parallel (concurrent jobs). Default is `1` (sequential).
-
-Examples:
+Examples
 
 ```bash
-# Run the default suite with the bundled binary
+# run default sizes with packaged binary
 python3 run_benchmarks.py
 
-# Run only two methods for small sizes and two concurrent jobs
+# run only two implementations for small sizes, two concurrent jobs
 python3 run_benchmarks.py --executable ./build/bench-matmul --run=naive,tiled --sizes=64,128 -j 2
 
-# Query the binary for available methods
-python3 run_benchmarks.py --executable ./build/bench-matmul --list
-```
-
-The script saves each run's output to a timestamped log file under `logs` (or `logs_<n>` if `logs` already exists).
-
-Alias mapping (supported by `run_benchmarks.py`)
+# compare three implementations (aliases allowed)
+python3 run_benchmarks.py --executable ./build/bench-matmul --compare=tiled-par,tiled,naive --sizes=64 -j 1
 
 You can use short, convenient aliases when calling `run_benchmarks.py`. These map to the full method labels used by the C++ binary:
 
@@ -218,13 +208,62 @@ Additionally, the program verifies that all implementations produce the same res
 
 ## Memory Management
 
-The program uses a contiguous memory allocation strategy for matrices to improve cache performance. Memory allocation and deallocation are tracked to detect any memory leaks.
+How `--compare` works
+- The runner normalizes aliases to full method names and runs each method
+  for each requested size. It parses the benchmark's output to extract the
+  reported average execution time and prints a compact table of times and
+  relative speedups (by default relative to the first method listed in the
+  `--compare` argument). `--baseline` can be forwarded to the binary if you
+  want the binary to use a particular baseline for its internal reporting.
+
+## Alias mapping (supported by `run_benchmarks.py`)
+
+You can use these shortcuts when calling the runner; the script maps them to
+the full implementation names:
+
+| Alias | Full name |
+|-------|-----------|
+| `naive` | `Naive-ijkLoop` |
+| `tiled` | `BlockTiled-CacheAware` |
+| `naive-par` | `Naive-ijkLoop-Parallel` |
+| `tiled-par` | `BlockTiled-CacheAware-Parallel` |
+| `avx2` | `SIMD-AVX2-Transposed` |
+| `avx2direct` | `SIMD-AVX2-Direct` |
+| `transposed` | `RowColumn-Transposed` |
+| `scalar` | `Scalar-LoopUnrolled` |
+| `par-avx2` | `Parallel-SIMD-AVX2` |
+| `par-scalar` | `Parallel-Scalar-LoopUnrolled` |
+| `par-avx2-direct` | `Parallel-SIMD-Direct` |
+| `local` | `BlockLocal-StackTranspose` |
+
+## Implementations (short descriptions)
+
+ `Naive-ijkLoop-Parallel` — naive triple-loop implementation parallelized across rows.
+- `Scalar-LoopUnrolled` — scalar unrolled inner loops for ILP.
+- `Parallel-SIMD-AVX2` — threaded + AVX2 vectorization.
+- `Parallel-Scalar-LoopUnrolled` — threaded scalar unrolled implementation.
+- `SIMD-AVX2-Direct` — AVX2 without pre-transposition (direct loads).
+- `Parallel-SIMD-Direct` — threaded variant of AVX2 direct loads.
+- `BlockLocal-StackTranspose` — tile-local transpose into stack buffer.
+
+## Output & verification
+
+- The binary verifies correctness by comparing each selected implementation
+  against the chosen baseline.
+- The benchmark emits a performance table listing average execution times
+  and relative speedups; the runner aggregates and prints concise comparison
+  tables when `--compare` is used.
+
+## Memory and diagnostics
+
+- Matrices use contiguous allocations (single data block + row pointers)
+  for better cache behaviour.
+- The program logs allocations/deallocations and reports a warning if
+  allocations do not match deallocations at exit.
 
 ## License
 
-MIT License
-
-Copyright (c) 2025 Nishanta Boro
+MIT License — Copyright (c) 2025 Nishanta Boro
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
