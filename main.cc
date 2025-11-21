@@ -359,6 +359,101 @@ void multiplyMatricesOptimized(float** matrixA, float** matrixB, float** result)
 }
 
 /**
+ * Parallel version of the cache-aware blocked/tiled multiplication.
+ *
+ * Partitions the block-rows among `NUM_THREADS` worker threads so each
+ * thread works on disjoint sets of result block-rows. Inside each block
+ * the computation mirrors `multiplyMatricesOptimized`.
+ */
+void multiplyMatricesOptimizedParallel(float** matrixA, float** matrixB, float** result) {
+    // Initialize result matrix to zeros
+    memset(result[0], 0, N * N * sizeof(float));
+
+    // Worker that processes a range of block-rows [startBlockRow, endBlockRow)
+    auto worker = [&](int startBlockRow, int endBlockRow) {
+        for (int bi = startBlockRow; bi < endBlockRow; bi += BLOCK_SIZE) {
+            for (int bj = 0; bj < N; bj += BLOCK_SIZE) {
+                for (int bk = 0; bk < N; bk += BLOCK_SIZE) {
+                    int iMax = std::min(bi + BLOCK_SIZE, N);
+                    int jMax = std::min(bj + BLOCK_SIZE, N);
+                    int kMax = std::min(bk + BLOCK_SIZE, N);
+
+                    for (int i = bi; i < iMax; i++) {
+                        for (int k = bk; k < kMax; k++) {
+                            float aik = matrixA[i][k];
+                            float* resRow = result[i];
+                            float* brow = matrixB[k];
+                            for (int j = bj; j < jMax; j++) {
+                                resRow[j] += aik * brow[j];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    // Compute number of block-rows and distribute them among threads
+    int totalBlockRows = (N + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    int blocksPerThread = std::max(1, (totalBlockRows + (int)NUM_THREADS - 1) / (int)NUM_THREADS);
+
+    std::vector<std::thread> threads;
+    threads.reserve(NUM_THREADS);
+
+    for (unsigned int t = 0; t < NUM_THREADS; ++t) {
+        int startBlockIdx = t * blocksPerThread;
+        int endBlockIdx = std::min(totalBlockRows, startBlockIdx + blocksPerThread);
+        if (startBlockIdx >= endBlockIdx) break; // no more work
+
+        int startBi = startBlockIdx * BLOCK_SIZE;
+        int endBi = endBlockIdx * BLOCK_SIZE;
+        if (startBi >= N) break;
+        endBi = std::min(endBi, N);
+
+        threads.emplace_back(worker, startBi, endBi);
+    }
+
+    for (auto &th : threads) th.join();
+}
+
+/**
+ * Naive triple-loop matrix multiplication but parallelized over rows.
+ * Each worker thread computes a disjoint range of output rows using the
+ * straightforward i-j-k algorithm. This gives a simple, easy-to-reason
+ * parallel baseline for comparison.
+ */
+void multiplyMatricesNaiveParallel(float** matrixA, float** matrixB, float** result) {
+    // Initialize result matrix to zeros
+    memset(result[0], 0, N * N * sizeof(float));
+
+    // Worker lambda: compute rows [startRow, endRow)
+    auto worker = [&](int startRow, int endRow) {
+        for (int row = startRow; row < endRow; row++) {
+            for (int col = 0; col < N; col++) {
+                float sum = 0.0f;
+                for (int k = 0; k < N; k++) {
+                    sum += matrixA[row][k] * matrixB[k][col];
+                }
+                result[row][col] = sum;
+            }
+        }
+    };
+
+    // Partition rows among threads
+    unsigned int threads = std::max(1u, NUM_THREADS);
+    int rowsPerThread = N / threads;
+    std::vector<std::thread> threadPool;
+    for (unsigned int t = 0; t < threads; ++t) {
+        int start = t * rowsPerThread;
+        int end = (t == threads - 1) ? N : (t + 1) * rowsPerThread;
+        if (start >= end) break;
+        threadPool.emplace_back(worker, start, end);
+    }
+
+    for (auto &th : threadPool) th.join();
+}
+
+/**
  * Matrix multiplication using on-the-fly local transposition.
  * Transposes small blocks of matrix B into stack-allocated buffer
  * to improve cache behavior without extra memory allocation.
@@ -867,6 +962,10 @@ struct BenchmarkResult {
 // Collection of all benchmark results for final comparison
 std::vector<BenchmarkResult> benchmarkResults;
 
+// Global baseline tracking: stores the name and duration of the chosen baseline
+double GLOBAL_BASELINE_DURATION = -1.0;
+std::string GLOBAL_BASELINE_NAME = "";
+
 /**
  * Benchmarks a matrix multiplication function and records performance metrics.
  * 
@@ -909,16 +1008,18 @@ void benchmarkMultiplication(float** matrixA, float** matrixB, float** result,
     // Calculate average execution time
     double avgDuration = totalDuration / iterations;
     log("Average execution time for " + methodName + ": " + std::to_string(avgDuration) + " ms");
-    
+
     // Calculate performance relative to baseline implementation
-    // First algorithm measured is considered the baseline
-    static double baselineDuration = -1;
+    // If `Naive-ijkLoop` is executed it will become the baseline. Otherwise
+    // the first executed method will be used as the baseline so that
+    // comparisons still make sense when the user intentionally omits naive.
     double speedup = 1.0;
-    
-    if (methodName == "Naive-ijkLoop") {
-        baselineDuration = avgDuration;
-    } else if (baselineDuration > 0) {
-        speedup = baselineDuration / avgDuration;
+    if (GLOBAL_BASELINE_DURATION < 0.0) {
+        GLOBAL_BASELINE_DURATION = avgDuration;
+        GLOBAL_BASELINE_NAME = methodName;
+        speedup = 1.0;
+    } else {
+        speedup = GLOBAL_BASELINE_DURATION / avgDuration;
     }
     
     // Store results for final comparison table
@@ -955,16 +1056,16 @@ void displayPerformanceComparisonTable() {
               });
     
     // Print all results with formatting
-    for (const auto& result : sortedResults) {
+        for (const auto& result : sortedResults) {
         std::cout << std::left << std::setw(55) << result.methodName 
                   << std::right << std::fixed << std::setprecision(3) 
                   << std::setw(14) << result.averageDuration;
         
-        if (result.methodName == "Naive-ijkLoop") {
-            std::cout << std::right << std::setw(20) << "baseline";
-        } else {
-            std::cout << std::right << std::setw(20) << (std::to_string(result.speedup) + "x faster");
-        }
+            if (!GLOBAL_BASELINE_NAME.empty() && result.methodName == GLOBAL_BASELINE_NAME) {
+                std::cout << std::right << std::setw(20) << "baseline";
+            } else {
+                std::cout << std::right << std::setw(20) << (std::to_string(result.speedup) + "x faster");
+            }
         std::cout << std::endl;
     }
     
@@ -980,7 +1081,7 @@ void displayPerformanceComparisonTable() {
     
     std::cout << "---------------------------------------------------------" << std::endl;
     std::cout << "Fastest implementation: " << fastestMethod << " (" 
-              << std::fixed << std::setprecision(2) << bestSpeedup << "x faster than baseline)" << std::endl;
+              << std::fixed << std::setprecision(2) << bestSpeedup << "x faster than " << GLOBAL_BASELINE_NAME << ")" << std::endl;
     std::cout << "---------------------------------------------------------" << std::endl;
 }
 
@@ -1022,6 +1123,7 @@ int main(int argc, char* argv[]) {
         // - --run=name1,name2,... or --run name1,name2,... selects methods to run
         std::set<std::string> methodsToRun;
         bool listOnly = false;
+        std::string baselineRequested = "";
         if (argc > 1) {
             for (int argi = 1; argi < argc; ++argi) {
                 std::string a = argv[argi];
@@ -1034,6 +1136,10 @@ int main(int argc, char* argv[]) {
                     while (std::getline(ss, token, ',')) {
                         if (!token.empty()) methodsToRun.insert(token);
                     }
+                } else if (a.rfind("--baseline=", 0) == 0) {
+                    baselineRequested = a.substr(11);
+                } else if (a == "--baseline" && argi + 1 < argc) {
+                    baselineRequested = argv[++argi];
                 } else if (a == "--run" && argi + 1 < argc) {
                     std::string payload = argv[++argi];
                     std::stringstream ss(payload);
@@ -1076,7 +1182,9 @@ int main(int argc, char* argv[]) {
             std::cout << "  --run=name1,name2  : run only the named methods (comma-separated)\n\n";
             std::cout << "Available multiplication methods:\n";
             std::cout << "  Naive-ijkLoop\n";
+            std::cout << "  Naive-ijkLoop-Parallel\n";
             std::cout << "  BlockTiled-CacheAware\n";
+            std::cout << "  BlockTiled-CacheAware-Parallel\n";
             std::cout << "  SIMD-AVX2-Transposed\n";
             std::cout << "  RowColumn-Transposed\n";
             std::cout << "  Scalar-LoopUnrolled\n";
@@ -1094,7 +1202,9 @@ int main(int argc, char* argv[]) {
         if (listOnly) {
             std::cout << "Available multiplication methods:\n";
             std::cout << "  Naive-ijkLoop\n";
+            std::cout << "  Naive-ijkLoop-Parallel\n";
             std::cout << "  BlockTiled-CacheAware\n";
+            std::cout << "  BlockTiled-CacheAware-Parallel\n";
             std::cout << "  SIMD-AVX2-Transposed\n";
             std::cout << "  RowColumn-Transposed\n";
             std::cout << "  Scalar-LoopUnrolled\n";
@@ -1140,7 +1250,9 @@ int main(int argc, char* argv[]) {
         float** aMatrix = allocateMatrix();
         float** bMatrix = allocateMatrix();
         float** product = allocateMatrix();
+        float** productNaiveParallel = allocateMatrix();
         float** productOptimized = allocateMatrix();
+        float** productOptimizedParallel = allocateMatrix();
         float** productTransposed = allocateMatrix();
         float** productAVX2 = allocateMatrix();
         float** productThreaded = allocateMatrix();
@@ -1158,7 +1270,9 @@ int main(int argc, char* argv[]) {
         // Map available methods to function pointers and product buffers
         std::vector<std::pair<std::string, void(*)(float**, float**, float**)>> allMethods = {
             {"Naive-ijkLoop", multiplyMatrices},
+            {"Naive-ijkLoop-Parallel", multiplyMatricesNaiveParallel},
             {"BlockTiled-CacheAware", multiplyMatricesOptimized},
+            {"BlockTiled-CacheAware-Parallel", multiplyMatricesOptimizedParallel},
             {"SIMD-AVX2-Transposed", multiplyMatricesAVX2},
             {"RowColumn-Transposed", multiplyMatricesTransposed},
             {"Scalar-LoopUnrolled", multiplyMatricesOptimizedNoSIMD},
@@ -1172,7 +1286,9 @@ int main(int argc, char* argv[]) {
         // Map method names to product buffers (so benchmarks write to correct matrices)
         std::unordered_map<std::string, float**> productMap = {
             {"Naive-ijkLoop", product},
+            {"Naive-ijkLoop-Parallel", productNaiveParallel},
             {"BlockTiled-CacheAware", productOptimized},
+            {"BlockTiled-CacheAware-Parallel", productOptimizedParallel},
             {"SIMD-AVX2-Transposed", productAVX2},
             {"RowColumn-Transposed", productTransposed},
             {"Scalar-LoopUnrolled", productOptimizedNoSIMD},
@@ -1193,7 +1309,9 @@ int main(int argc, char* argv[]) {
             deallocateMatrix(aMatrix);
             deallocateMatrix(bMatrix);
             deallocateMatrix(product);
+            deallocateMatrix(productNaiveParallel);
             deallocateMatrix(productOptimized);
+            deallocateMatrix(productOptimizedParallel);
             deallocateMatrix(productTransposed);
             deallocateMatrix(productAVX2);
             deallocateMatrix(productThreaded);
@@ -1206,25 +1324,62 @@ int main(int argc, char* argv[]) {
             return 0;
         }
         
-        // If user specified methods, ensure the baseline exists (Naive-ijkLoop).
-        // If baseline not requested, we will still run it to have a reference.
-        if (!methodsToRun.empty() && methodsToRun.find("Naive-ijkLoop") == methodsToRun.end()) {
-            log("Baseline 'Naive-ijkLoop' not requested; including it automatically for reference");
-            methodsToRun.insert("Naive-ijkLoop");
-        }
+        // If the user specified methods, do not force-add a baseline.
+        // The program will use the first executed method as the baseline if
+        // `Naive-ijkLoop` is not present. This avoids surprising runs when
+        // users explicitly request a subset of algorithms.
         
         // If user did not restrict methods, run all
         auto shouldRun = [&](const std::string &name) -> bool {
             return methodsToRun.empty() || methodsToRun.find(name) != methodsToRun.end();
         };
-        
-        // Execute benchmarks for selected implementations
+
+        // Determine baseline policy
+        std::string baselineName = "";
+        if (!baselineRequested.empty()) {
+            // User explicitly requested a baseline; validate it exists
+            bool found = false;
+            for (const auto &m : allMethods) if (m.first == baselineRequested) { found = true; break; }
+            if (!found) {
+                std::cerr << "ERROR: Requested baseline '" << baselineRequested << "' is not a known method.\n";
+                std::cerr << "Available methods:\n";
+                for (const auto &m : allMethods) std::cerr << "  " << m.first << "\n";
+                return 1;
+            }
+            // Ensure baseline is included in the run set
+            if (methodsToRun.empty() || methodsToRun.find(baselineRequested) == methodsToRun.end()) {
+                methodsToRun.insert(baselineRequested);
+            }
+            baselineName = baselineRequested;
+        } else if (shouldRun("Naive-ijkLoop")) {
+            // Prefer naive baseline when it will be run
+            baselineName = "Naive-ijkLoop";
+        } else {
+            baselineName = ""; // will pick first executed method as baseline
+        }
+
+        // Build ordered list of methods to execute: baseline first (if any), then the rest
+        std::vector<std::pair<std::string, void(*)(float**, float**, float**)>> execOrder;
+        if (!baselineName.empty()) {
+            // push baseline first
+            for (const auto &m : allMethods) {
+                if (m.first == baselineName) { execOrder.push_back(m); break; }
+            }
+        }
+        for (const auto &m : allMethods) {
+            if (!shouldRun(m.first)) continue;
+            if (!baselineName.empty() && m.first == baselineName) continue;
+            execOrder.push_back(m);
+        }
+
+        // If baselineName determined, set GLOBAL_BASELINE_NAME so reporting uses it
+        if (!baselineName.empty()) GLOBAL_BASELINE_NAME = baselineName;
+
+        // Execute benchmarks for selected implementations in the chosen order
         log("Beginning benchmark sequence");
-        for (const auto &entry : allMethods) {
+        for (const auto &entry : execOrder) {
             const std::string &name = entry.first;
             auto func = entry.second;
-            if (!shouldRun(name)) continue;
-            
             // find the corresponding product buffer
             float** outBuf = productMap[name];
             benchmarkMultiplication(aMatrix, bMatrix, outBuf, func, name);
@@ -1232,13 +1387,14 @@ int main(int argc, char* argv[]) {
         
         // Verify correctness of all implementations that were run
         log("Verifying correctness of results from selected multiplication methods");
-        // Identify baseline (Naive-ijkLoop) pointer (must exist after selection logic)
-        float** baselineBuf = productMap["Naive-ijkLoop"];
+        // Identify baseline pointer (must exist after benchmark sequence).
+        // The baseline name is chosen by the benchmark runner and stored in GLOBAL_BASELINE_NAME.
+        float** baselineBuf = productMap[GLOBAL_BASELINE_NAME];
         bool isEqual = true;
         // Build list of methods that were run (excluding baseline)
         std::vector<std::string> runMethods;
         for (const auto &entry : allMethods) {
-            if (shouldRun(entry.first) && entry.first != "Naive-ijkLoop") {
+            if (shouldRun(entry.first) && entry.first != GLOBAL_BASELINE_NAME) {
                 runMethods.push_back(entry.first);
             }
         }
@@ -1302,6 +1458,7 @@ int main(int argc, char* argv[]) {
         deallocateMatrix(productAVX2NoTranspose);
         deallocateMatrix(productThreadedAVX2NoTranspose);
         deallocateMatrix(productLocalTranspose);
+        deallocateMatrix(productOptimizedParallel);
         
         // Verify proper memory management
         log("Checking for memory leaks");
