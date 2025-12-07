@@ -87,6 +87,7 @@ python3 run_benchmarks.py --executable ./build/bench-matmul --run=naive,tiled --
 
 # compare three implementations (aliases allowed)
 python3 run_benchmarks.py --executable ./build/bench-matmul --compare=tiled-par,tiled,naive --sizes=64 -j 1
+```
 
 You can use short, convenient aliases when calling `run_benchmarks.py`. These map to the full method labels used by the C++ binary:
 
