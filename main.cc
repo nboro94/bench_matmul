@@ -1478,6 +1478,7 @@ int main(int argc, char* argv[]) {
         deallocateMatrix(aMatrix);
         deallocateMatrix(bMatrix);
         deallocateMatrix(product);
+        deallocateMatrix(productNaiveParallel);
         deallocateMatrix(productOptimized);
         deallocateMatrix(productTransposed);
         deallocateMatrix(productAVX2);
