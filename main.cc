@@ -1123,12 +1123,35 @@ int main(int argc, char* argv[]) {
         // - --run=name1,name2,... or --run name1,name2,... selects methods to run
         std::set<std::string> methodsToRun;
         bool listOnly = false;
+        bool threadsSetByUser = false;
         std::string baselineRequested = "";
         if (argc > 1) {
             for (int argi = 1; argi < argc; ++argi) {
                 std::string a = argv[argi];
                 if (a == "--list") {
                     listOnly = true;
+                } else if (a.rfind("--threads=", 0) == 0) {
+                    std::string payload = a.substr(10);
+                    try {
+                        int parsedThreads = std::stoi(payload);
+                        if (parsedThreads > 0) {
+                            NUM_THREADS = parsedThreads;
+                            threadsSetByUser = true;
+                        }
+                    } catch (const std::exception& e) {
+                        // ignore
+                    }
+                } else if (a == "--threads" && argi + 1 < argc) {
+                    std::string payload = argv[++argi];
+                    try {
+                        int parsedThreads = std::stoi(payload);
+                        if (parsedThreads > 0) {
+                            NUM_THREADS = parsedThreads;
+                            threadsSetByUser = true;
+                        }
+                    } catch (const std::exception& e) {
+                        // ignore
+                    }
                 } else if (a.rfind("--run=", 0) == 0) {
                     std::string payload = a.substr(6);
                     std::stringstream ss(payload);
@@ -1178,6 +1201,7 @@ int main(int argc, char* argv[]) {
             std::cout << "No command-line arguments detected.\n\n";
             std::cout << "Usage:\n";
             std::cout << "  [N]                : set matrix dimension (positive integer)\n";
+            std::cout << "  --threads [T]      : set number of threads (positive integer)\n";
             std::cout << "  --list             : list available multiplication methods\n";
             std::cout << "  --run=name1,name2  : run only the named methods (comma-separated)\n\n";
             std::cout << "Available multiplication methods:\n";
@@ -1234,8 +1258,13 @@ int main(int argc, char* argv[]) {
             log("Block size adjusted to " + std::to_string(BLOCK_SIZE) + " to better fit matrix dimensions");
         }
         
-        log("Determining optimal thread count based on CPU cores");
-        determineOptimalThreadCount();
+        if (!threadsSetByUser) {
+            log("Determining optimal thread count based on CPU cores");
+            determineOptimalThreadCount();
+        } else {
+            log("Thread count set to " + std::to_string(NUM_THREADS) + " by user");
+            std::cout << "Using " << NUM_THREADS << " threads for parallel operations (set by user)" << std::endl;
+        }
         
         std::cout << "Matrix Multiplication with Random Matrices (N=" << N << ", BLOCK_SIZE=" << BLOCK_SIZE << ")\n\n";
         
