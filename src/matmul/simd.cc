@@ -7,7 +7,6 @@
 #include <thread>
 #include <vector>
 
-
 void multiplyMatricesAVX2(float **matrixA, float **matrixB, float **result) {
   // Create transposed copy of B for better memory access patterns
   float **transposedB = allocateMatrix();
@@ -259,13 +258,14 @@ void multiplyMatricesThreadedAVX2NoTranspose(float **matrixA, float **matrixB,
   }
 }
 
-// Wrapper function for pthread-based implementation (uses std::thread
-// internally)
+#ifdef HAVE_PTHREAD
+// Wrapper function for pthread-based implementation (uses native pthreads)
 void multiplyMatricesPthreadWrapper(float **matrixA, float **matrixB,
                                     float **result) {
   multiplyMatricesPthreadAVX2(matrixA, matrixB, result, N, BLOCK_SIZE,
                               NUM_THREADS);
 }
+#endif
 
 #ifdef HAVE_TBB
 // Wrapper function for TBB-based implementation

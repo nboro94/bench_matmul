@@ -8,9 +8,8 @@
  1. Build the project:
 
     ```bash
-    mkdir -p build && cd build
-    cmake ..
-    make -j
+    cmake -B build -S .
+    cmake --build build --config Release
     ```
 
  2. Run the binary for a single size (default N=512):
@@ -178,6 +177,13 @@ This section expands on each implementation included in the benchmark. Each entr
 	- Pros: Good balance of memory use and locality; avoids large O(N^2) temporary.
 	- Cons: Requires careful block sizing; stack usage and edge handling need attention.
 
+- **Parallel-SIMD-TBB**
+	- Summary: Uses Intel Threading Building Blocks (TBB) to handle task scheduling and parallel execution, combined with AVX2 vectorization for inner loops.
+	- Complexity: O(N^3) total; TBB runtime handles load balancing.
+	- Behavior: Similar to Parallel-SIMD-AVX2 but abstracting thread management; potentially better load balancing on uneven workloads.
+	- Pros: High performance with less boilerplate for threading; dynamic scheduling.
+	- Cons: Requires TBB dependency; TBB runtime overhead for very small tasks.
+
 If you'd like, I can move these items into a dedicated section with short pseudocode or diagrams for the trickier methods (block tiling, local stack transpose), or add notes about numeric reproducibility across methods and how to tune `BLOCK_SIZE` and thread counts for your machine.
 
 ## Optimization Techniques
@@ -236,6 +242,7 @@ the full implementation names:
 | `par-scalar` | `Parallel-Scalar-LoopUnrolled` |
 | `par-avx2-direct` | `Parallel-SIMD-Direct` |
 | `local` | `BlockLocal-StackTranspose` |
+| `tbb` | `Parallel-SIMD-TBB` |
 
 ## Implementations (short descriptions)
 
@@ -246,6 +253,7 @@ the full implementation names:
 - `SIMD-AVX2-Direct` — AVX2 without pre-transposition (direct loads).
 - `Parallel-SIMD-Direct` — threaded variant of AVX2 direct loads.
 - `BlockLocal-StackTranspose` — tile-local transpose into stack buffer.
+- `Parallel-SIMD-TBB` — TBB-based task parallelism with AVX2 vectorization.
 
 ## Output & verification
 

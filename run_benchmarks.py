@@ -21,7 +21,8 @@ ALIASES = {
     'par-avx2-direct': 'Parallel-SIMD-Direct',
     'local': 'BlockLocal-StackTranspose',
     'naive-par': 'Naive-ijkLoop-Parallel',
-    'tiled-par': 'BlockTiled-CacheAware-Parallel'
+    'tiled-par': 'BlockTiled-CacheAware-Parallel',
+    'tbb': 'Parallel-SIMD-TBB'
 }
 
 # Build reverse map: full method name -> alias (pick the first alias if duplicates)
@@ -131,8 +132,23 @@ def run_benchmark(executable_path, matrix_size, log_dir, run_methods=None, basel
 
 def main():
     parser = argparse.ArgumentParser(description='Run matrix multiplication benchmarks with various sizes')
-    parser.add_argument('--executable', default='./bench-matmul',
-                        help='Path to the benchmark executable (default: ./bench-matmul)')
+    default_exec = './bench-matmul'
+    # Try to find the executable in common build locations
+    possible_paths = [
+        'build/Release/bench-matmul.exe',
+        'build/Debug/bench-matmul.exe',
+        'build/bench-matmul.exe',
+        'build/bench-matmul',
+        './bench-matmul.exe',
+        './bench-matmul'
+    ]
+    for p in possible_paths:
+        if os.path.exists(p):
+            default_exec = p
+            break
+
+    parser.add_argument('--executable', default=default_exec,
+                        help=f'Path to the benchmark executable (default: {default_exec})')
     parser.add_argument('--run', default=None,
                         help='Comma-separated list of multiplication methods to run (passed through to the executable as --run=name1,name2). Aliases supported.')
     parser.add_argument('--baseline', default=None,
