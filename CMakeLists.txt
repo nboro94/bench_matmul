@@ -63,6 +63,10 @@ add_executable(bench-matmul ${SOURCES})
 find_package(Threads REQUIRED)
 target_link_libraries(bench-matmul PRIVATE Threads::Threads)
 
+if(CMAKE_USE_PTHREADS_INIT)
+    target_compile_definitions(bench-matmul PRIVATE HAVE_PTHREAD)
+endif()
+
 # Link TBB when available
 if(TBB_AVAILABLE)
     if(TARGET TBB::tbb_static)

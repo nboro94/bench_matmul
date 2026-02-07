@@ -14,6 +14,33 @@ int main(int argc, char *argv[]) {
   try {
     log("Matrix multiplication benchmark program starting");
 
+    // Map all methods
+    std::vector<std::pair<std::string, void (*)(float **, float **, float **)>>
+        allMethods = {
+            {"Naive-ijkLoop", multiplyMatrices},
+            {"Naive-ijkLoop-Parallel", multiplyMatricesNaiveParallel},
+            {"BlockTiled-CacheAware", multiplyMatricesOptimized},
+            {"BlockTiled-CacheAware-Parallel",
+             multiplyMatricesOptimizedParallel},
+            {"SIMD-AVX2-Transposed", multiplyMatricesAVX2},
+            {"RowColumn-Transposed", multiplyMatricesTransposed},
+            {"Scalar-LoopUnrolled", multiplyMatricesOptimizedNoSIMD},
+            {"Parallel-SIMD-AVX2", multiplyMatricesThreaded},
+            {"Parallel-Scalar-LoopUnrolled",
+             multiplyMatricesOptimizedNoSIMDThreaded},
+            {"SIMD-AVX2-Direct", multiplyMatricesAVX2NoTranspose},
+            {"Parallel-SIMD-Direct", multiplyMatricesThreadedAVX2NoTranspose},
+            {"BlockLocal-StackTranspose", multiplyMatricesLocalTranspose}
+#ifdef HAVE_PTHREAD
+            ,
+            {"Parallel-SIMD-Pthread", multiplyMatricesPthreadWrapper}
+#endif
+#ifdef HAVE_TBB
+            ,
+            {"Parallel-SIMD-TBB", multiplyMatricesTBBWrapper}
+#endif
+        };
+
     // Process command line arguments
     std::set<std::string> methodsToRun;
     bool listOnly = false;
@@ -108,47 +135,14 @@ int main(int argc, char *argv[]) {
       std::cout << "  --run=name1,name2  : run only the named methods "
                    "(comma-separated)\n\n";
       std::cout << "Available multiplication methods:\n";
-      std::cout << "  Naive-ijkLoop\n";
-      std::cout << "  Naive-ijkLoop-Parallel\n";
-      std::cout << "  BlockTiled-CacheAware\n";
-      std::cout << "  BlockTiled-CacheAware-Parallel\n";
-      std::cout << "  SIMD-AVX2-Transposed\n";
-      std::cout << "  RowColumn-Transposed\n";
-      std::cout << "  Scalar-LoopUnrolled\n";
-      std::cout << "  Parallel-SIMD-AVX2\n";
-      std::cout << "  Parallel-Scalar-LoopUnrolled\n";
-      std::cout << "  SIMD-AVX2-Direct\n";
-      std::cout << "  Parallel-SIMD-Direct\n";
-      std::cout << "  BlockLocal-StackTranspose\n\n";
+      for (const auto &m : allMethods) {
+        std::cout << "  " << m.first << "\n";
+      }
       std::cout << "Example:\n";
       std::cout << "  ./bench-matmul 1024 "
                    "--run=BlockTiled-CacheAware,SIMD-AVX2-Transposed\n\n";
       return 0;
     }
-
-    // Map all methods
-    std::vector<std::pair<std::string, void (*)(float **, float **, float **)>>
-        allMethods = {
-            {"Naive-ijkLoop", multiplyMatrices},
-            {"Naive-ijkLoop-Parallel", multiplyMatricesNaiveParallel},
-            {"BlockTiled-CacheAware", multiplyMatricesOptimized},
-            {"BlockTiled-CacheAware-Parallel",
-             multiplyMatricesOptimizedParallel},
-            {"SIMD-AVX2-Transposed", multiplyMatricesAVX2},
-            {"RowColumn-Transposed", multiplyMatricesTransposed},
-            {"Scalar-LoopUnrolled", multiplyMatricesOptimizedNoSIMD},
-            {"Parallel-SIMD-AVX2", multiplyMatricesThreaded},
-            {"Parallel-Scalar-LoopUnrolled",
-             multiplyMatricesOptimizedNoSIMDThreaded},
-            {"SIMD-AVX2-Direct", multiplyMatricesAVX2NoTranspose},
-            {"Parallel-SIMD-Direct", multiplyMatricesThreadedAVX2NoTranspose},
-            {"BlockLocal-StackTranspose", multiplyMatricesLocalTranspose},
-            {"Parallel-SIMD-Pthread", multiplyMatricesPthreadWrapper}
-#ifdef HAVE_TBB
-            ,
-            {"Parallel-SIMD-TBB", multiplyMatricesTBBWrapper}
-#endif
-        };
 
     if (listOnly) {
       std::cout << "Available multiplication methods:\n";
