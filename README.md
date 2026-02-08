@@ -256,15 +256,21 @@ the full implementation names:
 
 ## Implementations (short descriptions)
 
- `Naive-ijkLoop-Parallel` — naive triple-loop implementation parallelized across rows.
+- `Naive-ijkLoop` — baseline triple-loop implementation.
+- `Naive-ijkLoop-Parallel` — naive triple-loop implementation parallelized across rows.
+- `BlockTiled-CacheAware` — cache-aware blocked/tiled implementation.
+- `BlockTiled-CacheAware-Parallel` — threaded blocked/tiled implementation.
+- `RowColumn-Transposed` — transpose-based row × row dot-product implementation.
+- `BlockLocal-StackTranspose` — tile-local transpose into stack buffer.
 - `Scalar-LoopUnrolled` — scalar unrolled inner loops for ILP.
+- `SIMD-AVX2-Transposed` — AVX2 with pre-transposed input.
+- `SIMD-AVX2-Direct` — AVX2 without pre-transposition (direct loads).
 - `Parallel-SIMD-AVX2` — threaded + AVX2 vectorization.
 - `Parallel-Scalar-LoopUnrolled` — threaded scalar unrolled implementation.
-- `SIMD-AVX2-Direct` — AVX2 without pre-transposition (direct loads).
 - `Parallel-SIMD-Direct` — threaded variant of AVX2 direct loads.
-- `BlockLocal-StackTranspose` — tile-local transpose into stack buffer.
+- `Parallel-SIMD-Pthread` — pthread-backed SIMD implementation (when pthreads are available).
 - `Parallel-SIMD-TBB` — TBB-based task parallelism with AVX2 vectorization.
-- `CUDA-Naive` — CUDA kernel implementation (GPU).
+- `CUDA-Naive` — CUDA kernel implementation (GPU, when enabled).
 
 ## Output & verification
 
