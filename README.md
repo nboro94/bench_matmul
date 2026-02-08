@@ -99,6 +99,8 @@ You can use short, convenient aliases when calling `run_benchmarks.py`. These ma
 
  - `naive` -> `Naive-ijkLoop`
  - `tiled` -> `BlockTiled-CacheAware`
+ - `naive-par` -> `Naive-ijkLoop-Parallel`
+ - `tiled-par` -> `BlockTiled-CacheAware-Parallel`
  - `avx2` -> `SIMD-AVX2-Transposed`
  - `avx2direct` -> `SIMD-AVX2-Direct`
  - `transposed` -> `RowColumn-Transposed`
@@ -107,6 +109,7 @@ You can use short, convenient aliases when calling `run_benchmarks.py`. These ma
  - `par-scalar` -> `Parallel-Scalar-LoopUnrolled`
  - `par-avx2-direct` -> `Parallel-SIMD-Direct`
  - `local` -> `BlockLocal-StackTranspose`
+ - `tbb` -> `Parallel-SIMD-TBB`
  - `cuda` -> `CUDA-Naive`
 
 If you prefer, you can also pass the full implementation names directly to `--run`.
