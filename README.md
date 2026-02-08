@@ -59,6 +59,9 @@ Examples:
 # run two specific implementations for N=1024
 ./bench-matmul 1024 --run=BlockTiled-CacheAware,SIMD-AVX2-Transposed
 
+# run the CUDA implementation for N=1024 (requires USE_CUDA=ON build)
+./bench-matmul 1024 --run=CUDA-Naive
+
 # force baseline selection
 ./bench-matmul 512 --run=BlockTiled-CacheAware --baseline=Naive-ijkLoop
 ```
@@ -84,6 +87,9 @@ python3 run_benchmarks.py
 
 # run only two implementations for small sizes, two concurrent jobs
 python3 run_benchmarks.py --executable ./build/bench-matmul --run=naive,tiled --sizes=64,128 -j 2
+
+# run the CUDA implementation using an alias
+python3 run_benchmarks.py --executable ./build/bench-matmul --run=cuda --sizes=512
 
 # compare three implementations (aliases allowed)
 python3 run_benchmarks.py --executable ./build/bench-matmul --compare=tiled-par,tiled,naive --sizes=64 -j 1
