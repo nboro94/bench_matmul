@@ -22,7 +22,8 @@ ALIASES = {
     'local': 'BlockLocal-StackTranspose',
     'naive-par': 'Naive-ijkLoop-Parallel',
     'tiled-par': 'BlockTiled-CacheAware-Parallel',
-    'tbb': 'Parallel-SIMD-TBB'
+    'tbb': 'Parallel-SIMD-TBB',
+    'cuda': 'CUDA-Naive'
 }
 
 # Build reverse map: full method name -> alias (pick the first alias if duplicates)

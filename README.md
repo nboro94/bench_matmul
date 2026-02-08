@@ -37,6 +37,7 @@
 - CMake
 - Linux (the program performs simple cache-detection via `/sys`)
 - Optional: CPU with AVX2 to exercise vectorized code paths
+- Optional: CUDA toolkit + NVIDIA GPU for the CUDA implementation
 
  ## Binary usage (quick reference)
 
@@ -100,6 +101,7 @@ You can use short, convenient aliases when calling `run_benchmarks.py`. These ma
  - `par-scalar` -> `Parallel-Scalar-LoopUnrolled`
  - `par-avx2-direct` -> `Parallel-SIMD-Direct`
  - `local` -> `BlockLocal-StackTranspose`
+ - `cuda` -> `CUDA-Naive`
 
 If you prefer, you can also pass the full implementation names directly to `--run`.
 
@@ -184,6 +186,13 @@ This section expands on each implementation included in the benchmark. Each entr
 	- Pros: High performance with less boilerplate for threading; dynamic scheduling.
 	- Cons: Requires TBB dependency; TBB runtime overhead for very small tasks.
 
+- **CUDA-Naive**
+	- Summary: Simple CUDA kernel that computes a dense matrix product on the GPU with one thread per output element.
+	- Complexity: O(N^3) total work; wall-clock benefits depend on GPU throughput and PCIe transfer overhead.
+	- Behavior: Transfers A and B to device, runs kernel, and copies C back to host.
+	- Pros: Enables GPU benchmarking within the same harness.
+	- Cons: Not yet optimized (no tiling/shared memory); transfer overhead can dominate for small N.
+
 If you'd like, I can move these items into a dedicated section with short pseudocode or diagrams for the trickier methods (block tiling, local stack transpose), or add notes about numeric reproducibility across methods and how to tune `BLOCK_SIZE` and thread counts for your machine.
 
 ## Optimization Techniques
@@ -243,6 +252,7 @@ the full implementation names:
 | `par-avx2-direct` | `Parallel-SIMD-Direct` |
 | `local` | `BlockLocal-StackTranspose` |
 | `tbb` | `Parallel-SIMD-TBB` |
+| `cuda` | `CUDA-Naive` |
 
 ## Implementations (short descriptions)
 
@@ -254,6 +264,7 @@ the full implementation names:
 - `Parallel-SIMD-Direct` — threaded variant of AVX2 direct loads.
 - `BlockLocal-StackTranspose` — tile-local transpose into stack buffer.
 - `Parallel-SIMD-TBB` — TBB-based task parallelism with AVX2 vectorization.
+- `CUDA-Naive` — CUDA kernel implementation (GPU).
 
 ## Output & verification
 
