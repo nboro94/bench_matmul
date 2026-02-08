@@ -37,6 +37,7 @@
 - CMake
 - Linux (the program performs simple cache-detection via `/sys`)
 - Optional: CPU with AVX2 to exercise vectorized code paths
+- Optional: CUDA toolkit + NVIDIA GPU for the CUDA implementation
 
  ## Binary usage (quick reference)
 
@@ -57,6 +58,9 @@ Examples:
 
 # run two specific implementations for N=1024
 ./bench-matmul 1024 --run=BlockTiled-CacheAware,SIMD-AVX2-Transposed
+
+# run the CUDA implementation for N=1024 (requires USE_CUDA=ON build)
+./bench-matmul 1024 --run=CUDA-Naive
 
 # force baseline selection
 ./bench-matmul 512 --run=BlockTiled-CacheAware --baseline=Naive-ijkLoop
@@ -84,6 +88,9 @@ python3 run_benchmarks.py
 # run only two implementations for small sizes, two concurrent jobs
 python3 run_benchmarks.py --executable ./build/bench-matmul --run=naive,tiled --sizes=64,128 -j 2
 
+# run the CUDA implementation using an alias
+python3 run_benchmarks.py --executable ./build/bench-matmul --run=cuda --sizes=512
+
 # compare three implementations (aliases allowed)
 python3 run_benchmarks.py --executable ./build/bench-matmul --compare=tiled-par,tiled,naive --sizes=64 -j 1
 ```
@@ -92,6 +99,8 @@ You can use short, convenient aliases when calling `run_benchmarks.py`. These ma
 
  - `naive` -> `Naive-ijkLoop`
  - `tiled` -> `BlockTiled-CacheAware`
+ - `naive-par` -> `Naive-ijkLoop-Parallel`
+ - `tiled-par` -> `BlockTiled-CacheAware-Parallel`
  - `avx2` -> `SIMD-AVX2-Transposed`
  - `avx2direct` -> `SIMD-AVX2-Direct`
  - `transposed` -> `RowColumn-Transposed`
@@ -100,6 +109,8 @@ You can use short, convenient aliases when calling `run_benchmarks.py`. These ma
  - `par-scalar` -> `Parallel-Scalar-LoopUnrolled`
  - `par-avx2-direct` -> `Parallel-SIMD-Direct`
  - `local` -> `BlockLocal-StackTranspose`
+ - `tbb` -> `Parallel-SIMD-TBB`
+ - `cuda` -> `CUDA-Naive`
 
 If you prefer, you can also pass the full implementation names directly to `--run`.
 
@@ -184,6 +195,13 @@ This section expands on each implementation included in the benchmark. Each entr
 	- Pros: High performance with less boilerplate for threading; dynamic scheduling.
 	- Cons: Requires TBB dependency; TBB runtime overhead for very small tasks.
 
+- **CUDA-Naive**
+	- Summary: Simple CUDA kernel that computes a dense matrix product on the GPU with one thread per output element.
+	- Complexity: O(N^3) total work; wall-clock benefits depend on GPU throughput and PCIe transfer overhead.
+	- Behavior: Transfers A and B to device, runs kernel, and copies C back to host.
+	- Pros: Enables GPU benchmarking within the same harness.
+	- Cons: Not yet optimized (no tiling/shared memory); transfer overhead can dominate for small N.
+
 If you'd like, I can move these items into a dedicated section with short pseudocode or diagrams for the trickier methods (block tiling, local stack transpose), or add notes about numeric reproducibility across methods and how to tune `BLOCK_SIZE` and thread counts for your machine.
 
 ## Optimization Techniques
@@ -243,17 +261,25 @@ the full implementation names:
 | `par-avx2-direct` | `Parallel-SIMD-Direct` |
 | `local` | `BlockLocal-StackTranspose` |
 | `tbb` | `Parallel-SIMD-TBB` |
+| `cuda` | `CUDA-Naive` |
 
 ## Implementations (short descriptions)
 
- `Naive-ijkLoop-Parallel` — naive triple-loop implementation parallelized across rows.
+- `Naive-ijkLoop` — baseline triple-loop implementation.
+- `Naive-ijkLoop-Parallel` — naive triple-loop implementation parallelized across rows.
+- `BlockTiled-CacheAware` — cache-aware blocked/tiled implementation.
+- `BlockTiled-CacheAware-Parallel` — threaded blocked/tiled implementation.
+- `RowColumn-Transposed` — transpose-based row × row dot-product implementation.
+- `BlockLocal-StackTranspose` — tile-local transpose into stack buffer.
 - `Scalar-LoopUnrolled` — scalar unrolled inner loops for ILP.
+- `SIMD-AVX2-Transposed` — AVX2 with pre-transposed input.
+- `SIMD-AVX2-Direct` — AVX2 without pre-transposition (direct loads).
 - `Parallel-SIMD-AVX2` — threaded + AVX2 vectorization.
 - `Parallel-Scalar-LoopUnrolled` — threaded scalar unrolled implementation.
-- `SIMD-AVX2-Direct` — AVX2 without pre-transposition (direct loads).
 - `Parallel-SIMD-Direct` — threaded variant of AVX2 direct loads.
-- `BlockLocal-StackTranspose` — tile-local transpose into stack buffer.
+- `Parallel-SIMD-Pthread` — pthread-backed SIMD implementation (when pthreads are available).
 - `Parallel-SIMD-TBB` — TBB-based task parallelism with AVX2 vectorization.
+- `CUDA-Naive` — CUDA kernel implementation (GPU, when enabled).
 
 ## Output & verification
 

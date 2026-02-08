@@ -40,6 +40,11 @@ void multiplyMatricesOptimizedNoSIMDThreaded(float **matrixA, float **matrixB,
 void multiplyMatricesPthreadWrapper(float **matrixA, float **matrixB,
                                     float **result);
 
+#ifdef HAVE_CUDA
+// CUDA implementation
+void multiplyMatricesCUDA(float **matrixA, float **matrixB, float **result);
+#endif
+
 #ifdef HAVE_TBB
 // TBB wrapper
 void multiplyMatricesTBBWrapper(float **matrixA, float **matrixB,

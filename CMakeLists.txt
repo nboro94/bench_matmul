@@ -9,6 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(USE_TBB "Enable TBB-backed matrix multiplication if available" ON)
 option(FETCH_TBB "Fetch oneTBB via FetchContent when TBB not found" OFF)
 option(ENABLE_WARNINGS "Enable reasonable compiler warnings" ON)
+option(USE_CUDA "Enable CUDA-backed matrix multiplication if available" OFF)
 
 # Compiler flags (non-invasive, controlled per-compiler)
 if(MSVC)
@@ -56,6 +57,18 @@ if(USE_TBB)
     endif()
 endif()
 
+# Optional CUDA-backed implementation
+if(USE_CUDA)
+    enable_language(CUDA)
+    find_package(CUDAToolkit REQUIRED)
+    list(APPEND SOURCES ${PROJECT_SOURCE_DIR}/src/matmul/cuda.cu)
+    set(CMAKE_CUDA_STANDARD 14)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+    add_compile_definitions(HAVE_CUDA)
+    set(CUDA_AVAILABLE TRUE)
+    message(STATUS "CUDA enabled for matrix multiplication")
+endif()
+
 # -- Target ----------------------------------------------------------------
 add_executable(bench-matmul ${SOURCES})
 
@@ -78,12 +91,18 @@ if(TBB_AVAILABLE)
     endif()
 endif()
 
+# Link CUDA when available
+if(CUDA_AVAILABLE)
+    target_link_libraries(bench-matmul PRIVATE CUDA::cudart)
+endif()
+
 # Include directories (project-local headers)
 target_include_directories(bench-matmul PRIVATE ${PROJECT_SOURCE_DIR}/include)
 
 # Helpful compile-time options
 target_compile_definitions(bench-matmul PRIVATE
     $<$<BOOL:${TBB_AVAILABLE}>:HAVE_TBB>
+    $<$<BOOL:${CUDA_AVAILABLE}>:HAVE_CUDA>
 )
 
 # Installation and packaging (small conveniences)
@@ -93,3 +112,4 @@ install(TARGETS bench-matmul RUNTIME DESTINATION bin)
 message(STATUS "Project: ${PROJECT_NAME}")
 message(STATUS "C++ standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "TBB support: ${TBB_AVAILABLE}")
+message(STATUS "CUDA support: ${CUDA_AVAILABLE}")

@@ -31,6 +31,10 @@ int main(int argc, char *argv[]) {
             {"SIMD-AVX2-Direct", multiplyMatricesAVX2NoTranspose},
             {"Parallel-SIMD-Direct", multiplyMatricesThreadedAVX2NoTranspose},
             {"BlockLocal-StackTranspose", multiplyMatricesLocalTranspose}
+#ifdef HAVE_CUDA
+            ,
+            {"CUDA-Naive", multiplyMatricesCUDA}
+#endif
 #ifdef HAVE_PTHREAD
             ,
             {"Parallel-SIMD-Pthread", multiplyMatricesPthreadWrapper}
