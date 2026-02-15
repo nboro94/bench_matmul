@@ -10,14 +10,36 @@ option(USE_TBB "Enable TBB-backed matrix multiplication if available" ON)
 option(FETCH_TBB "Fetch oneTBB via FetchContent when TBB not found" OFF)
 option(ENABLE_WARNINGS "Enable reasonable compiler warnings" ON)
 option(USE_CUDA "Enable CUDA-backed matrix multiplication if available" OFF)
+option(USE_DEBUG_MODE "Enable additional debug trace logs" OFF)
+set(SIMD_ISA "AVX2" CACHE STRING "SIMD ISA level (AVX2 or AVX512)")
+set_property(CACHE SIMD_ISA PROPERTY STRINGS AVX2 AVX512)
+string(TOUPPER "${SIMD_ISA}" SIMD_ISA_UPPER)
+if(NOT SIMD_ISA_UPPER STREQUAL "AVX2" AND NOT SIMD_ISA_UPPER STREQUAL "AVX512")
+    message(FATAL_ERROR "SIMD_ISA must be AVX2 or AVX512 (got: ${SIMD_ISA})")
+endif()
 
 # Compiler flags (non-invasive, controlled per-compiler)
 if(MSVC)
-    add_compile_options(/W4 /EHsc /arch:AVX2)
+    add_compile_options(
+        $<$<COMPILE_LANGUAGE:C>:/W4>
+        $<$<COMPILE_LANGUAGE:C>:/EHsc>
+        $<$<COMPILE_LANGUAGE:CXX>:/W4>
+        $<$<COMPILE_LANGUAGE:CXX>:/EHsc>
+    )
 else()
-    add_compile_options(-march=native -mavx2 -mfma -O3)
+    add_compile_options(
+        $<$<COMPILE_LANGUAGE:C>:-O3>
+        $<$<COMPILE_LANGUAGE:CXX>:-O3>
+    )
     if(ENABLE_WARNINGS)
-        add_compile_options(-Wall -Wextra -Wpedantic)
+        add_compile_options(
+            $<$<COMPILE_LANGUAGE:C>:-Wall>
+            $<$<COMPILE_LANGUAGE:C>:-Wextra>
+            $<$<COMPILE_LANGUAGE:C>:-Wpedantic>
+            $<$<COMPILE_LANGUAGE:CXX>:-Wall>
+            $<$<COMPILE_LANGUAGE:CXX>:-Wextra>
+            $<$<COMPILE_LANGUAGE:CXX>:-Wpedantic>
+        )
     endif()
 endif()
 
@@ -72,6 +94,26 @@ endif()
 # -- Target ----------------------------------------------------------------
 add_executable(bench-matmul ${SOURCES})
 
+if(MSVC)
+    target_compile_options(bench-matmul PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:/arch:${SIMD_ISA_UPPER}>
+    )
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+    if(SIMD_ISA_UPPER STREQUAL "AVX512")
+        target_compile_options(bench-matmul PRIVATE
+            $<$<COMPILE_LANGUAGE:CXX>:-mavx512f>
+            $<$<COMPILE_LANGUAGE:CXX>:-mavx512dq>
+            $<$<COMPILE_LANGUAGE:CXX>:-mavx512vl>
+            $<$<COMPILE_LANGUAGE:CXX>:-mfma>
+        )
+    else()
+        target_compile_options(bench-matmul PRIVATE
+            $<$<COMPILE_LANGUAGE:CXX>:-mavx2>
+            $<$<COMPILE_LANGUAGE:CXX>:-mfma>
+        )
+    endif()
+endif()
+
 # Link Threads (pthread on POSIX, handled automatically on MSVC)
 find_package(Threads REQUIRED)
 target_link_libraries(bench-matmul PRIVATE Threads::Threads)
@@ -93,7 +135,7 @@ endif()
 
 # Link CUDA when available
 if(CUDA_AVAILABLE)
-    target_link_libraries(bench-matmul PRIVATE CUDA::cudart)
+    target_link_libraries(bench-matmul PRIVATE CUDA::cudart CUDA::cuda_driver)
 endif()
 
 # Include directories (project-local headers)
@@ -103,6 +145,7 @@ target_include_directories(bench-matmul PRIVATE ${PROJECT_SOURCE_DIR}/include)
 target_compile_definitions(bench-matmul PRIVATE
     $<$<BOOL:${TBB_AVAILABLE}>:HAVE_TBB>
     $<$<BOOL:${CUDA_AVAILABLE}>:HAVE_CUDA>
+    USE_DEBUG_MODE=$<IF:$<BOOL:${USE_DEBUG_MODE}>,1,0>
 )
 
 # Installation and packaging (small conveniences)
@@ -113,3 +156,9 @@ message(STATUS "Project: ${PROJECT_NAME}")
 message(STATUS "C++ standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "TBB support: ${TBB_AVAILABLE}")
 message(STATUS "CUDA support: ${CUDA_AVAILABLE}")
+message(STATUS "Debug mode: ${USE_DEBUG_MODE}")
+if(MSVC)
+    message(STATUS "SIMD ISA: ${SIMD_ISA_UPPER}")
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+    message(STATUS "SIMD ISA: ${SIMD_ISA_UPPER}")
+endif()

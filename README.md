@@ -202,8 +202,6 @@ This section expands on each implementation included in the benchmark. Each entr
 	- Pros: Enables GPU benchmarking within the same harness.
 	- Cons: Not yet optimized (no tiling/shared memory); transfer overhead can dominate for small N.
 
-If you'd like, I can move these items into a dedicated section with short pseudocode or diagrams for the trickier methods (block tiling, local stack transpose), or add notes about numeric reproducibility across methods and how to tune `BLOCK_SIZE` and thread counts for your machine.
-
 ## Optimization Techniques
 
 ### Cache Blocking/Tiling

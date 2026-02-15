@@ -4,10 +4,13 @@
 #include <chrono>
 #include <iomanip>
 #include <iostream>
+#include <stdexcept>
 
 std::vector<BenchmarkResult> benchmarkResults;
 double GLOBAL_BASELINE_DURATION = -1.0;
 std::string GLOBAL_BASELINE_NAME = "";
+bool GLOBAL_BENCHMARK_KERNEL_FAILURE = false;
+std::string GLOBAL_BENCHMARK_FAILURE_REASON = "";
 
 void benchmarkMultiplication(float **matrixA, float **matrixB, float **result,
                              void (*multiplyFunc)(float **, float **, float **),
@@ -27,7 +30,13 @@ void benchmarkMultiplication(float **matrixA, float **matrixB, float **result,
     auto start = std::chrono::high_resolution_clock::now();
 
     // Execute the multiplication function
+    GLOBAL_BENCHMARK_KERNEL_FAILURE = false;
+    GLOBAL_BENCHMARK_FAILURE_REASON.clear();
     multiplyFunc(matrixA, matrixB, result);
+    if (GLOBAL_BENCHMARK_KERNEL_FAILURE) {
+      throw std::runtime_error("Method '" + methodName +
+                               "' failed: " + GLOBAL_BENCHMARK_FAILURE_REASON);
+    }
 
     // Calculate elapsed time
     auto end = std::chrono::high_resolution_clock::now();

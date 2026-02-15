@@ -8,6 +8,7 @@
 #include <sstream>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 int main(int argc, char *argv[]) {
@@ -191,24 +192,22 @@ int main(int argc, char *argv[]) {
     std::mt19937 gen(rd());
     std::uniform_real_distribution<float> dist(1.0f, 10.0f);
 
-    log("Allocating matrices");
-    float **aMatrix = allocateMatrix();
-    float **bMatrix = allocateMatrix();
-
-    // Allocate product buffers for each method
-    std::unordered_map<std::string, float **> productMap;
-    for (const auto &m : allMethods) {
-      productMap[m.first] = allocateMatrix();
-    }
-
-    log("Initializing matrices with random values");
-    initializeRandomMatrixFast(aMatrix, gen, dist);
-    initializeRandomMatrixFast(bMatrix, gen, dist);
-
     auto shouldRun = [&](const std::string &name) -> bool {
       return methodsToRun.empty() ||
              methodsToRun.find(name) != methodsToRun.end();
     };
+
+    std::unordered_set<std::string> knownMethods;
+    for (const auto &m : allMethods) {
+      knownMethods.insert(m.first);
+    }
+    for (const auto &requested : methodsToRun) {
+      if (knownMethods.find(requested) == knownMethods.end()) {
+        std::cerr << "ERROR: Requested method '" << requested
+                  << "' is not a known method.\n";
+        return 1;
+      }
+    }
 
     std::string baselineName = "";
     if (!baselineRequested.empty()) {
@@ -254,6 +253,39 @@ int main(int argc, char *argv[]) {
 
     if (!baselineName.empty())
       GLOBAL_BASELINE_NAME = baselineName;
+
+    struct MatrixPool {
+      std::vector<float **> matrices;
+
+      float **allocateTracked() {
+        float **m = allocateMatrix();
+        matrices.push_back(m);
+        return m;
+      }
+
+      void cleanup() {
+        for (float **m : matrices) {
+          deallocateMatrix(m);
+        }
+        matrices.clear();
+      }
+
+      ~MatrixPool() { cleanup(); }
+    } matrixPool;
+
+    log("Allocating matrices");
+    float **aMatrix = matrixPool.allocateTracked();
+    float **bMatrix = matrixPool.allocateTracked();
+
+    // Allocate product buffers for each method
+    std::unordered_map<std::string, float **> productMap;
+    for (const auto &m : allMethods) {
+      productMap[m.first] = matrixPool.allocateTracked();
+    }
+
+    log("Initializing matrices with random values");
+    initializeRandomMatrixFast(aMatrix, gen, dist);
+    initializeRandomMatrixFast(bMatrix, gen, dist);
 
     log("Beginning benchmark sequence");
     for (const auto &entry : execOrder) {
@@ -328,11 +360,7 @@ int main(int argc, char *argv[]) {
     displayPerformanceComparisonTable();
 
     log("Deallocating matrices");
-    deallocateMatrix(aMatrix);
-    deallocateMatrix(bMatrix);
-    for (auto &pair : productMap) {
-      deallocateMatrix(pair.second);
-    }
+    matrixPool.cleanup();
 
     log("Checking for memory leaks");
     checkMemoryLeaks();
