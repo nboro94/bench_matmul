@@ -22,7 +22,8 @@ ALIASES = {
     'local': 'BlockLocal-StackTranspose',
     'naive-par': 'Naive-ijkLoop-Parallel',
     'tiled-par': 'BlockTiled-CacheAware-Parallel',
-    'tbb': 'Parallel-SIMD-TBB'
+    'tbb': 'Parallel-SIMD-TBB',
+    'cuda': 'CUDA-Naive'
 }
 
 # Build reverse map: full method name -> alias (pick the first alias if duplicates)
@@ -111,7 +112,7 @@ def run_benchmark(executable_path, matrix_size, log_dir, run_methods=None, basel
             f.write(process.stdout)
 
         elapsed = time.time() - start_time
-        print(f"✓ Completed in {elapsed:.2f} seconds. Log saved to: {log_file}")
+        print(f"[OK] Completed in {elapsed:.2f} seconds. Log saved to: {log_file}")
         return True, process.stdout
     
     except subprocess.CalledProcessError as e:
@@ -120,14 +121,14 @@ def run_benchmark(executable_path, matrix_size, log_dir, run_methods=None, basel
             if e.stdout:
                 f.write(e.stdout)
         
-        print(f"✗ Failed with exit code {e.returncode}. Log saved to: {log_file}")
+        print(f"[ERROR] Failed with exit code {e.returncode}. Log saved to: {log_file}")
         return False, (e.stdout if e.stdout else "")
     
     except Exception as e:
         with open(log_file, 'a') as f:
             f.write(f"\nERROR: {str(e)}\n")
         
-        print(f"✗ Exception occurred: {str(e)}. Log saved to: {log_file}")
+        print(f"[ERROR] Exception occurred: {str(e)}. Log saved to: {log_file}")
         return False, str(e)
 
 def main():
@@ -415,7 +416,7 @@ def main():
             if ok:
                 successful_runs += 1
             else:
-                assert(0)
+                print(f"Benchmark failed for size {size}; continuing with remaining sizes")
             print("-" * 50)
     
     total_time = time.time() - start_time
@@ -424,3 +425,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

@@ -1,69 +1,90 @@
+# Benchmark Conclusions (All Methods, CPU + CUDA)
 
-# Benchmark Conclusions
+## Run Summary
 
-## Scope
+- Executable: `build/Release/bench-matmul.exe`
+- Methods: all methods listed by `--list`, including `CUDA-Naive`
+- Requested sizes: `64, 128, 256, 512, 1024, 2048, 3072, 4096, 6000`
+- Completed sizes: `64, 128, 256, 512, 1024, 2048, 3072, 4096`
+- Incomplete size: `6000` (log file exists but is empty: `logs_1/matmul_bench_6000_all_20260213_021153_137953.log`)
+- Iterations per method: 3
 
-This report summarizes empirical performance measurements for four matrix-multiplication implementations measured on the current environment. Implementations compared:
+All completed logs passed:
+- Correctness verification (`Verification successful`)
+- Memory checks (`Memory check passed`)
 
-- BlockTiled-CacheAware-Parallel (`tiled-par`)
-- BlockTiled-CacheAware (serial) (`tiled`)
-- Naive-ijkLoop (serial) (`naive`)
-- Naive-ijkLoop-Parallel (`naive-par`)
+## Fastest Method by Size
 
-## Data
+- `N=64`: `SIMD-AVX2-Direct` (0.024 ms)
+- `N=128`: `BlockTiled-CacheAware-Parallel` (0.217 ms)
+- `N=256`: `Parallel-SIMD-TBB` (0.573 ms)
+- `N=512`: `Parallel-SIMD-TBB` (1.970 ms)
+- `N=1024`: `Parallel-SIMD-TBB` (8.678 ms)
+- `N=2048`: `CUDA-Naive` (45.633 ms)
+- `N=3072`: `CUDA-Naive` (71.275 ms)
+- `N=4096`: `CUDA-Naive` (129.009 ms)
 
-Raw timing data are available as CSV files under `build/logs_*`. Measurements span a range of matrix sizes; representative points used in this report include N ∈ {100, 500, 1000, 3000}.
+## Key Performance Trend
 
-## Key findings
+There is a clear crossover:
+- For small to medium matrices (`N <= 1024`), CPU optimized parallel methods win.
+- For large matrices (`N >= 2048`), CUDA becomes fastest and scales better than CPU methods.
 
-- For small matrices (N ≲ 400) `naive-par` often gives the lowest runtime because its simple row-partitioning parallelism incurs low overhead.
-- For larger matrices (N ≳ 500) `tiled-par` consistently achieves the best absolute performance. Blocking reduces memory traffic and increases cache reuse; combining blocking with parallelism yields the largest gains at scale.
-- The serial blocked algorithm (`tiled`) substantially outperforms the serial naive implementation (`naive`), indicating that cache-aware blocking is an effective optimization even without threads.
-- The serial naive implementation (`naive`) is the slowest and is appropriate primarily as a correctness baseline.
+This is the central conclusion of this run.
 
-## Numeric summary (selected points)
+## CUDA Behavior and Interpretation
 
-| Size | tiled-par (ms) | tiled (ms) | naive (ms) | naive-par (ms) |
-|------:|---------------:|-----------:|----------:|---------------:|
-| 100  | 0.497          | 0.664      | 0.962     | 0.321          |
-| 500  | 38.675         | 64.717     | 124.487   | 48.497         |
-| 1000 | 313.674        | 508.216    | 932.109   | 394.979        |
-| 3000 | 8170.526       | 13769.665  | 32248.761 | 13191.149      |
+CUDA timing pattern is consistent across large sizes:
+- Iteration 1 is significantly slower than iterations 2/3.
+- Causes: first-use GPU runtime setup, context creation, and warm-up overhead.
+- Example (`N=4096`):
+  - Iter 1: 190.912 ms
+  - Iter 2: 97.375 ms
+  - Iter 3: 98.741 ms
+  - Reported average: 129.009 ms
 
-## Performance interpretation
+Implication:
+- For production throughput, steady-state CUDA performance is better than the reported average implies.
+- For latency-sensitive one-shot calls, startup overhead must be included.
 
-- Observed speedups over serial naive are typically in the 2×–3× range for parallel implementations; gains are limited by memory bandwidth and cache behavior rather than pure arithmetic throughput.
-- Blocking reduces data movement and therefore improves scaling for larger N; the crossover point where blocking+parallelism outperforms naive-par depends on CPU/cache characteristics but appears in the tested runs near N≈300–500.
-- Timing at very small sizes (N ≲ 50) is noisy and occasionally shows artifacts (timer resolution, scheduling jitter). Such sizes should not be used to draw firm conclusions without increasing iteration counts.
+## CPU Family Findings
 
-## Recommendations
+- `Parallel-SIMD-TBB` is the strongest CPU method overall for `N=256..1024`.
+- `BlockTiled-CacheAware-Parallel` is consistently close to top CPU performance and wins at `N=128`.
+- `SIMD-AVX2-Direct` is best only at tiny sizes (`N=64`), where thread/scheduling overhead dominates.
+- Serial baselines become uncompetitive quickly as size increases.
 
-- Use `BlockTiled-CacheAware-Parallel` (`tiled-par`) for production or large problem sizes.
-- For quick experiments and small-to-medium sizes, `Naive-ijkLoop-Parallel` (`naive-par`) is an efficient, low-overhead option.
-- Retain `Naive-ijkLoop` as a correctness baseline only.
+## Scaling Notes
 
-## Measurement best practices
+- Naive baseline growth is extreme (as expected for O(N^3)):
+  - `N=1024`: 1552.042 ms
+  - `N=2048`: 23080.346 ms
+  - `N=3072`: 83141.683 ms
+  - `N=4096`: 465839.861 ms
+- CUDA relative speedup vs naive grows strongly with size:
+  - `N=2048`: 505.78x
+  - `N=3072`: 1166.50x
+  - `N=4096`: 3610.90x
 
-- Run multiple independent trials and report mean ± standard deviation (the harness currently averages three iterations per method).
-- Exclude or increase iterations for sizes that produce sub-millisecond runtimes to avoid measurement noise.
+## Practical Recommendations
 
-## Suggested next experiments
+1. If matrix sizes are mostly below ~1500:
+   - Prefer CPU path: `Parallel-SIMD-TBB`
+   - Fallback: `BlockTiled-CacheAware-Parallel`
 
-1. Thread-scaling: measure performance of parallel implementations while varying thread count to quantify parallel efficiency and identify the practical thread limit.
-2. Block-size tuning: sweep `BLOCK_SIZE` for blocked implementations to identify the cache-optimal block size on the target machine.
-3. Profiling: collect CPU and memory-bandwidth metrics (e.g., `perf`) during large runs to identify whether memory bandwidth is the primary bottleneck.
-4. SIMD/compiler optimization: benchmark vectorized variants and compiler flags (for example, `-O3 -march=native`) to measure vectorization benefits.
+2. If matrix sizes are frequently 2048+:
+   - Prefer CUDA path
+   - Keep a warm-up call to reduce first-iteration penalty in measured workload
 
-## Reproducibility
+3. Keep `Naive-ijkLoop` only as a correctness/performance baseline reference.
 
-Re-run the comparison with the project runner. Example command:
+## Evidence Sources
 
-```bash
-python3 run_benchmarks.py --executable ./build/bench-matmul \
-  --compare=tiled-par,tiled,naive,naive-par \
-  --sizes=100,200,300,400,500,600,700,800,900,1000 -j 1
-```
-
-## Generated artifacts
-
-Each run creates a human-readable text file and a CSV file under `build/logs_*` (e.g., `comparison_<methods>_<timestamp>.txt` and `.csv`). Use the CSVs for plotting and further analysis.
+- `logs_1/matmul_bench_64_all_20260213_012711_715404.log`
+- `logs_1/matmul_bench_128_all_20260213_012711_880223.log`
+- `logs_1/matmul_bench_256_all_20260213_012712_044429.log`
+- `logs_1/matmul_bench_512_all_20260213_012712_322203.log`
+- `logs_1/matmul_bench_1024_all_20260213_012713_492694.log`
+- `logs_1/matmul_bench_2048_all_20260213_012724_280765.log`
+- `logs_1/matmul_bench_3072_all_20260213_012927_501673.log`
+- `logs_1/matmul_bench_4096_all_20260213_013639_517027.log`

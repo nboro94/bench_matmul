@@ -19,6 +19,8 @@ extern std::vector<BenchmarkResult> benchmarkResults;
 // Global baseline tracking: stores the name and duration of the chosen baseline
 extern double GLOBAL_BASELINE_DURATION;
 extern std::string GLOBAL_BASELINE_NAME;
+extern bool GLOBAL_BENCHMARK_KERNEL_FAILURE;
+extern std::string GLOBAL_BENCHMARK_FAILURE_REASON;
 
 /**
  * Benchmarks a matrix multiplication function and records performance metrics.

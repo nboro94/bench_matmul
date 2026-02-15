@@ -83,7 +83,7 @@ void determineOptimalBlockSize() {
   // Calculate how much memory we can use per matrix block
   // We need space for 3 blocks: A, B, and result portions
   int maxMatrixSizeBytes = cacheSizeBytes / 3;
-  int maxBlockElements = maxMatrixSizeBytes / sizeof(int);
+  int maxBlockElements = maxMatrixSizeBytes / sizeof(float);
   int optimalBlockSize = static_cast<int>(std::sqrt(maxBlockElements));
 
   // Round down to power of 2 for optimal memory alignment and performance
